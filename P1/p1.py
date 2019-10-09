@@ -217,12 +217,15 @@ def ejercicio1():
 	pintar_multiples_imagenes_pyplot([imagen, laplacian_gaussian(imagen, 3, cv2.BORDER_REPLICATE), laplacian_gaussian(imagen, 3, cv2.BORDER_REFLECT)], ['Original', '3 - Replicate', '3 - Reflect'], 1, 3, 'Laplacian')
 
 def main():
-	#ejercicio1()
+    """
+    ejercicio1()
+    """
     # Ejercicio 2 A
     imagen = lee_imagen('imagenes/cat.bmp', 0)
     pinta_imagen(gaussian_pyramid(imagen), "Piramide gaussiana")
 
     # Ejercicio 2 B
+    imagen = lee_imagen('imagenes/cat.bmp', 0)
     pinta_imagen(laplacian_pyramid(imagen), "Piramide Laplaciana")
 
 
