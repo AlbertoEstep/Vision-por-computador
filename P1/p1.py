@@ -146,23 +146,58 @@ def derive_convolution(derivX = 0, derivY = 0, size = 7, normal = True):
         sys.exit()
 
 # Usar la función Laplacian para el cálculo de la convolución 2D con una máscara normalizada de Laplaciana-de-Gaussiana de tamaño variable.
-def laplacian_gaussian(img, sigma = 0, border = cv2.BORDER_DEFAULT, size = (0, 0), k_size = 7, depth = 0, scaler = 1, delt = 0):
-    img = cv2.copyMakeBorder(img, k_size, k_size, k_size, k_size, border)
+def laplacian_gaussian(img, sigma = 0, border = cv2.BORDER_DEFAULT, size = (0, 0), k_size = 3, depth = 0, scaler = 1, delt = 50):
     blur = gaussian_blur(img, size, sigma, border)
     return cv2.Laplacian(blur, depth, ksize = k_size, scale = scaler, delta = delt, borderType = border)
 
 
-def main():
 
-	"""
-	# Ejercicio 1 A 1
+# Una función que genere una representación en pirámide Gaussiana de 4 niveles de una imagen.
+# Encadena Multiples Imagenes en una Ventana OpenCV para Piramides
+def construct_pyramid(imgA , imgB):
+    # Se obtienen las filas y columnas
+    heightA, weightA = imgA.shape
+    heightB, weightB = imgB.shape
+    # Se crea la nueva Imagen inicializada a ceros
+    imagen = np.zeros((max(heightA, heightB), weightA + weightB),  np.uint8)
+    # Se concatenan las Imagenes
+    imagen[:heightA, :weightA] = imgA
+    imagen[:heightB, weightA:weightA + weightB] = imgB
+    return imagen
+
+def gaussian_pyramid(img, level = 4, border = cv2.BORDER_DEFAULT):
+    images = imgPyr = img
+    for i in range(0, level-1):
+        imgPyr = cv2.pyrDown(imgPyr, borderType = border)
+        images = construct_pyramid(images, imgPyr)
+    return images
+
+
+# Una función que genere una representación en pirámide Laplaciana de 4 niveles de una imagen.
+# Piramide Laplaciana
+def laplacian_pyramid(img, level = 4, border = cv2.BORDER_DEFAULT):
+    # Piramide Gaussiana
+    images = [cv2.pyrDown(img, borderType = border)]
+    for i in range(1, level):
+        images.append(cv2.pyrDown(images[i-1], borderType = border))
+    image = images[-1]
+    result = image
+    # Piramide Laplaciana
+    for i in reversed(images[0:-1]):
+        a = cv2.pyrUp(image, dstsize = (i.shape[1], i.shape[0]))
+        b = cv2.subtract(a, i)
+        result = construct_pyramid(result, b)
+        image = i
+    return result
+
+def ejercicio1():
+    # Ejercicio 1 A 1
 	imagen = lee_imagen('imagenes/cat.bmp', 1)
 	pintar_multiples_imagenes_pyplot([imagen, gaussian_blur(imagen, (5, 5), 3)], ['cat', 'cat_gaussian_blur'], 1, 2, 'GaussianBlur')
 	pintar_multiples_imagenes_pyplot([imagen, gaussian_blur(imagen, (11, 11), 6)], ['cat', 'cat_gaussian_blur(11,11),6'], 1, 2, 'GaussianBlur')
 	pintar_multiples_imagenes_pyplot([imagen, gaussian_blur(imagen, (11, 11), 6), gaussian_blur(imagen, (23, 23), 7)], ['cat', 'cat_g_b(11,11),6', 'cat_g_b(23, 23), 7'], 1, 3, 'GaussianBlur')
 	imagen = lee_imagen('imagenes/cat.bmp', 0)
 	pintar_multiples_imagenes_pyplot([imagen, gaussian_blur(imagen, (11, 11), 6), gaussian_blur(imagen, (23, 23), 7)], ['cat', 'cat_g_b(11,11),6', 'cat_g_b(23, 23), 7'], 1, 3, 'GaussianBlur')
-
 
 	# Ejercicio 1 A 2
 	print("Para Sigma = 1\n")
@@ -175,12 +210,24 @@ def main():
 	X2, Y2 = derive_convolution(2, 2, 3)
 	print("Primera Derivada en X:\n", X1, "\nPrimera Derivada en Y:\n", Y1)
 	print("Segunda Derivada en X:\n", X2, "\nSegunda Derivada en Y:\n", Y2)
-	"""
 
-	# Ejercicio 1 A 2
+    # Ejercicio 1 B
 	imagen = lee_imagen('imagenes/cat.bmp', 1)
 	pintar_multiples_imagenes_pyplot([imagen, laplacian_gaussian(imagen, 1, cv2.BORDER_REPLICATE), laplacian_gaussian(imagen, 1, cv2.BORDER_REFLECT)], ['Original', '1 - Replicate', '1 - Reflect'], 1, 3, 'Laplacian')
-	pintar_multiples_imagenes_pyplot(igualTam([imagen, laplacian_gaussian(imagen, 3, cv2.BORDER_REPLICATE), laplacian_gaussian(imagen, 3, cv2.BORDER_REFLECT)]), ['Original', '3 - Replicate', '3 - Reflect'], 1, 3, 'Laplacian')
+	pintar_multiples_imagenes_pyplot([imagen, laplacian_gaussian(imagen, 3, cv2.BORDER_REPLICATE), laplacian_gaussian(imagen, 3, cv2.BORDER_REFLECT)], ['Original', '3 - Replicate', '3 - Reflect'], 1, 3, 'Laplacian')
+
+def main():
+	#ejercicio1()
+    # Ejercicio 2 A
+    imagen = lee_imagen('imagenes/cat.bmp', 0)
+    pinta_imagen(gaussian_pyramid(imagen), "Piramide gaussiana")
+
+    # Ejercicio 2 B
+    pinta_imagen(laplacian_pyramid(imagen), "Piramide Laplaciana")
+
+
+
+
 
 if __name__ == "__main__":
     main()
