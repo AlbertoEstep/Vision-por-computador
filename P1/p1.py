@@ -90,12 +90,49 @@ def pintar_multiples_imagenes_en_una(secuencia_imagenes, titulo):
     pinta_imagen(imagen, titulo)
 
 '''
+def subsampling(imagen):
+    return imagen[::2, ::2]
+
+''' COPIADO
+def upsample(imagen):
+    i = [2*a for a in range(0, imagen.shape[0])]
+    j = [2*a for a in range(0, imagen.shape[1])]
+    for a in i:
+        imagen = np.insert(imagen, a+1, imagen[a,:], axis = 0)
+    for a in j:
+        imagen = np.insert(imagen, a+1, imagen[:,a], axis = 1)
+    return imagen
+
+def upsampling(imagen, filas, columnas):
+    depth = imagen.shape[2]
+    cp = np.zeros(filas, columnas, depth)
+    for k in range(0, depth):
+        for i in range(0, filas):
+            if (i % 2) == 1:
+                for j in range(0, columnas):
+                    if (j % 2) == 1:
+                        cp[i][j][k] = imagen[int(i/2), int(j/2), k]
+                    else:
+                        cp[i][j][k] = imagen[0][0][0]-imagen[0][0][0]
+            else:
+                for j in range(0, columnas):
+                    cp[i][j][k] = imagen[0][0][0]-imagen[0][0][0]
+    return cp
+'''
+def piramide(secuencia_imagenes, border = cv2.BORDER_CONSTANT):
+    altura = max(imagen.shape[0] for imagen in secuencia_imagenes)
+    for i, imagen in enumerate(secuencia_imagenes):
+        if len(imagen.shape) == 2:
+            secuencia_imagenes[i] = cv2.cvtColor(secuencia_imagenes[i], cv2.COLOR_GRAY2BGR)
+        if imagen.shape[0] < altura:
+            secuencia_imagenes[i] = cv2.copyMakeBorder(secuencia_imagenes[i], 0, altura - imagen.shape[0], 0, 0, borderType = border)
+    return cv2.hconcat(secuencia_imagenes)
 #######################################################################################################
 
 
 
 '''
-#NO NOS DEJAN USARLA
+# NO NOS DEJAN USARLA
 # El cálculo de la convolución de una imagen con una máscara 2D. Usar una Gaussiana 2D (GaussianBlur)
 def gaussian_blur(img, size = (0, 0), sigma = 0, border = cv2.BORDER_DEFAULT):
 	return cv2.GaussianBlur(img, size, sigma, border)
@@ -105,10 +142,10 @@ def gaussian_blur(img, size = (0, 0), sigma = 0, border = cv2.BORDER_DEFAULT):
 '''
 El cálculo de la convolución de una imagen con una máscara 2D.
     Parametros:
-        imagen - imagen
+        imagen - Imagen
         ksize – Tamaño de la abertura, debe ser impar y positivo.
         sigma – Desviación estándar gaussiana. Si no es positivo, se calcula a partir de ksize como sigma = 0.3 * ((ksize-1) * 0.5 - 1) + 0.8.
-        border - tratamiento del borde de la imagen
+        border - Tratamiento del borde de la imagen
 
 Podemos observar que a mayor sigma, mayor difuminada queda la imagen. Análogo con el ksize. Podemos tambien poner un sigma grande en algun eje y
 el suavizado que se obtiene se aprecia mayor en el eje que tenga el sigma más grande.
@@ -124,13 +161,15 @@ def gaussian_blur(imagen, ksize, sigma = 0, border = cv2.BORDER_DEFAULT):
 '''
 El cálculo de la convolución de una imagen con máscaras 1D dadas por getDerivKernels
     Parametros:
-        imagen - imagen
-        ksize – Tamaño de la abertura, debe ser impar y positivo.
-        sigma – Desviación estándar gaussiana. Si no es positivo, se calcula a partir de ksize como sigma = 0.3 * ((ksize-1) * 0.5 - 1) + 0.8.
-        border - tratamiento del borde de la imagen
+        imagen - Imagen
+        dX – Orden de la derivada con respecto al eje X.
+        dY – Orden de la derivada con respecto al eje Y.
+        ksize – Tamaño de la abertura, debe ser impar y positivo (1, 3, 5 o 7, segun https://docs.opencv.org/2.4/modules/imgproc/doc/filtering.html#void%20getDerivKernels(OutputArray%20kx,%20OutputArray%20ky,%20int%20dx,%20int%20dy,%20int%20ksize,%20bool%20normalize,%20int%20ktype)).
+        normal - Indicador que indica si se deben normalizar los coeficientes del filtro o no.
+        border - Tratamiento del borde de la imagen
 
-Podemos observar que a mayor sigma, mayor difuminada queda la imagen. Análogo con el ksize. Podemos tambien poner un sigma grande en algun eje y
-el suavizado que se obtiene se aprecia mayor en el eje que tenga el sigma más grande.
+Observamos cambios de tono de la imagen. Al aumentar el orden de la derivada, se aprecia los cambios de tonos mas fuertes.
+Si aumentamos la derivada en algun eje con respecto el otro, aparecen lineas en dirección al eje aumentado.
 '''
 def convolucion1D(imagen, dX = 0, dY = 0, ksize = 7, normal = True, border = cv2.BORDER_REPLICATE):
     if ((ksize == 1) or (ksize == 3) or (ksize == 5) or (ksize == 7)):
@@ -141,40 +180,46 @@ def convolucion1D(imagen, dX = 0, dY = 0, ksize = 7, normal = True, border = cv2
     else:
         sys.exit('El ksize debe ser 1, 3, 5 o 7')
 
-def maskDerivKernels(img,dx = 1,dy = 1,ksize = 3,border = cv2.BORDER_REPLICATE):
-    """
-    """
-    dxdy = cv2.getDerivKernels(dx,dy,ksize)
-    return cv2.sepFilter2D(img,-1,dxdy[0],dxdy[1],border)
+'''
+Usar la función Laplacian para el cálculo de la convolución 2D con una máscara normalizada de Laplaciana-de-Gaussiana de tamaño variable.
+    Parametros:
+        imagen - Imagen
+        sigma – Desviación estándar gaussiana. Si no es positivo, se calcula a partir de ksize como sigma = 0.3 * ((ksize-1) * 0.5 - 1) + 0.8.
+        border - Tratamiento del borde de la imagen
+        ksize – Tamaño de la abertura, debe ser impar y positivo.
+        ddepth - profundidad deseada de la imagen de destino
 
-# Usar la función Laplacian para el cálculo de la convolución 2D con una máscara normalizada de Laplaciana-de-Gaussiana de tamaño variable.
-def laplacian_gaussian(img, sigma = 0, border = cv2.BORDER_DEFAULT, size = (0, 0), k_size = 3, depth = 0, scaler = 1, delt = 50):
-    blur = gaussian_blur(img, size, sigma, border)
-    return cv2.Laplacian(blur, depth, ksize = k_size, scale = scaler, delta = delt, borderType = border)
+EXPLICAR
+'''
+def laplacian_gaussian(imagen, sigma = 0, border = cv2.BORDER_DEFAULT, ksize = 3, ddepth = 0):
+    imagen_alisada = gaussian_blur(imagen, ksize, sigma, border)
+    return cv2.Laplacian(imagen_alisada, ddepth, ksize = ksize, borderType = border)
 
 
+'''
+Una función que genere una representación en pirámide Gaussiana de 4 niveles de una imagen.
+    Parametros:
+        imagen - Imagen
+        nivel – Indica el nivel de la pirámide (> 1)
+        border - Tratamiento del borde de la imagen
 
+EXPLICAR Y MODIFICAR LO DE LOS BORDES MAS EJEMPLOS
+'''
 # Una función que genere una representación en pirámide Gaussiana de 4 niveles de una imagen.
-# Encadena Multiples Imagenes en una Ventana OpenCV para Piramides
-def construct_pyramid(imgA , imgB):
-    # Se obtienen las filas y columnas
-    heightA, weightA = imgA.shape
-    heightB, weightB = imgB.shape
-    # Se crea la nueva Imagen inicializada a ceros
-    imagen = np.zeros((max(heightA, heightB), weightA + weightB),  np.uint8)
-    # Se concatenan las Imagenes
-    imagen[:heightA, :weightA] = imgA
-    imagen[:heightB, weightA:weightA + weightB] = imgB
-    return imagen
-
-def gaussian_pyramid(img, level = 4, border = cv2.BORDER_DEFAULT):
-    images = imgPyr = img
-    for i in range(0, level-1):
-        imgPyr = cv2.pyrDown(imgPyr, borderType = border)
-        images = construct_pyramid(images, imgPyr)
-    return images
+def piramide_gaussiana(imagen, nivel = 4, border = cv2.BORDER_CONSTANT):
+    if nivel > 1:
+        sub = subsampling(imagen)
+        p = piramide([imagen, sub], border)
+        for i in range(2, nivel):
+            sub = subsampling(sub)
+            p = piramide([p, sub], border)
+        return p
+    else:
+        sys.exit('Nivel no valido')
 
 
+
+''' ANTIGUO
 # Una función que genere una representación en pirámide Laplaciana de 4 niveles de una imagen.
 # Piramide Laplaciana
 def laplacian_pyramid(img, level = 4, border = cv2.BORDER_DEFAULT):
@@ -191,9 +236,12 @@ def laplacian_pyramid(img, level = 4, border = cv2.BORDER_DEFAULT):
         result = construct_pyramid(result, b)
         image = i
     return result
+'''
+
+
+
 
 def ejercicio1():
-
 
     # Ejercicio 1 A 1
     imagen = lee_imagen('imagenes/cat.bmp', 1)
@@ -202,33 +250,33 @@ def ejercicio1():
     pintar_multiples_imagenes_pyplot([imagen, gaussian_blur(imagen, 5, 7), gaussian_blur(imagen, 9, 7), gaussian_blur(imagen, 15, 7) ], ['cat', 'blur_ksize5_sigma7', 'blur_ksize9_sigma7', 'blur_ksize15_sigma7'], 2, 2, 'GaussianBlur')
     pintar_multiples_imagenes_pyplot([imagen, gaussian_blur(imagen, 7, 7, cv2.BORDER_CONSTANT), gaussian_blur(imagen, 7, 7, cv2.BORDER_REFLECT), gaussian_blur(imagen, 7, 7) ], ['cat', 'blur_border_constant', 'blur_border_reflect', 'blur_default'], 2, 2, 'GaussianBlur')
 
-
 	# Ejercicio 1 A 2
-    pintar_multiples_imagenes_pyplot([imagen, convolucion1D(imagen,1, 1, 1), convolucion1D(imagen, 2, 2, 1)], ['original','convolución1D', 'convolución1D'], 1, 3, 'convolución')
+    imagen = lee_imagen('imagenes/cat.bmp', 1)
+    pintar_multiples_imagenes_pyplot([imagen, convolucion1D(imagen, 1, 1, 1), convolucion1D(imagen, 2, 2, 1)], ['original','dx1_dy1_ksize1', 'dx2_dy2_ksize1'], 1, 3, 'Convolucion1D: Variación en el orden de las derivadas')
+    pintar_multiples_imagenes_pyplot([imagen, convolucion1D(imagen, 2, 2, 3), convolucion1D(imagen, 2, 2, 5)], ['original','dx2_dy2_ksize3', 'dx2_dy2_ksize5'], 1, 3, 'Convolucion1D: Variacion en el tamaño de la abertura')
+    pintar_multiples_imagenes_pyplot([imagen, convolucion1D(imagen, 4, 4, 5), convolucion1D(imagen, 4, 4, 7)], ['original','dx4_dy4_ksize5', 'dx4_dy4_ksize7'], 1, 3, 'Convolucion1D: Variacion en el tamaño de la abertura')
+    pintar_multiples_imagenes_pyplot([imagen, convolucion1D(imagen, 0, 2, 3), convolucion1D(imagen, 2, 0, 3)], ['original','dx0_dy2_ksize3', 'dx2_dy0_ksize3'], 1, 3, 'Convolucion1D: Variación en los ejes de las derivadas')
+    pintar_multiples_imagenes_pyplot([imagen, convolucion1D(imagen, 0, 2, 3, border = cv2.BORDER_CONSTANT), convolucion1D(imagen, 2, 0, 3, border = cv2.BORDER_REFLECT)], ['original','BORDER_CONSTANT', 'BORDER_REFLECT'], 1, 3, 'Convolucion1D: Variación en los ejes de las derivadas')
 
-    '''
     # Ejercicio 1 B
-	imagen = lee_imagen('imagenes/cat.bmp', 1)
-	pintar_multiples_imagenes_pyplot([imagen, laplacian_gaussian(imagen, 1, cv2.BORDER_REPLICATE), laplacian_gaussian(imagen, 1, cv2.BORDER_REFLECT)], ['Original', '1 - Replicate', '1 - Reflect'], 1, 3, 'Laplacian')
-	pintar_multiples_imagenes_pyplot([imagen, laplacian_gaussian(imagen, 3, cv2.BORDER_REPLICATE), laplacian_gaussian(imagen, 3, cv2.BORDER_REFLECT)], ['Original', '3 - Replicate', '3 - Reflect'], 1, 3, 'Laplacian')
+    imagen = lee_imagen('imagenes/cat.bmp', 1)
+    pintar_multiples_imagenes_pyplot([imagen, laplacian_gaussian(imagen, 1, cv2.BORDER_REPLICATE), laplacian_gaussian(imagen, 1, cv2.BORDER_REFLECT)], ['Original', '1 - Replicate', '1 - Reflect'], 1, 3, 'Laplacian')
+    pintar_multiples_imagenes_pyplot([imagen, laplacian_gaussian(imagen, 3, cv2.BORDER_REPLICATE), laplacian_gaussian(imagen, 3, cv2.BORDER_REFLECT)], ['Original', '3 - Replicate', '3 - Reflect'], 1, 3, 'Laplacian')
 
-    '''
-def main():
+def ejercicio2():
 
-    ejercicio1()
-
-
-    '''
     # Ejercicio 2 A
-    imagen = lee_imagen('imagenes/cat.bmp', 0)
-    pinta_imagen(gaussian_pyramid(imagen), "Piramide gaussiana")
+    imagen = lee_imagen('imagenes/cat.bmp', 1)
+    pinta_imagen(piramide_gaussiana(imagen, 2, cv2.BORDER_CONSTANT), "Piramide gaussiana")
 
     # Ejercicio 2 B
     imagen = lee_imagen('imagenes/cat.bmp', 0)
-    pinta_imagen(laplacian_pyramid(imagen), "Piramide Laplaciana")
-    '''
+    #pinta_imagen(laplacian_pyramid(imagen), "Piramide Laplaciana")
 
 
+def main():
+    #ejercicio1()
+    ejercicio2()
 
 
 if __name__ == "__main__":
