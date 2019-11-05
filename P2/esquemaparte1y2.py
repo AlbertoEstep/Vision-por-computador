@@ -4,12 +4,12 @@
 ############ CARGAR LAS LIBRERÍAS NECESARIAS ############################
 #########################################################################
 
-# A completar: esquema disponible en las diapositivas
-
+# Completado: esquema disponible en las diapositivas
 import numpy as np
 import keras
 import matplotlib.pyplot as plt
 import keras.utils as np_utils
+# Modelos y capas que se van a usar
 from keras.models import Sequential
 from keras.layers import Dense, Dropout, Flatten
 from keras.layers import Conv2D, MaxPooling2D
@@ -23,9 +23,12 @@ from keras.datasets import cifar100
 ######## FUNCIÓN PARA CARGAR Y MODIFICAR EL CONJUNTO DE DATOS ###########
 #########################################################################
 
-# A completar: función disponible en las diapositivas
-
-
+# Completado: función disponible en las diapositivas
+'''
+A esta función sólo se le llama una vez. Devuelve 4 vectores conteniendo,
+por este orden, las imágenes de entrenamiento , las clases de las imagenes de
+entrenamiento , las imágenes del conjunto de test y las clases del conjunto de test.
+'''
 def cargarImagenes():
     # Cargamos Cifar100. Cada imagen tiene tamaño
     # (32, 32, 3). Nos vamos a quedar con las
@@ -48,11 +51,13 @@ def cargarImagenes():
     x_test = x_test[test_idx]
     y_test = y_test[test_idx]
 
-    # Transformamos los vectores de clases en matrices.
-    # Cada componente se convierte en un vector de ceros
-    # con un uno en la componente correspondiente a la
-    # clase a la que pertenece la imagen. Este paso es
-    # necesario para la clasificación multiclase en keras.
+    '''
+    Transformamos los vectores de clases en matrices.
+    Cada componente se convierte en un vector de ceros
+    con un uno en la componente correspondiente a la
+    clase a la que pertenece la imagen. Este paso es
+    necesario para la clasificación multiclase en keras.
+    '''
 
     y_train = np_utils.to_categorical(y_train, 25)
     y_test = np_utils.to_categorical(y_test, 25)
@@ -64,21 +69,34 @@ def cargarImagenes():
 ######## FUNCIÓN PARA OBTENER EL ACCURACY DEL CONJUNTO DE TEST ##########
 #########################################################################
 
-# A completar: función disponible en las diapositivas
+# Completado: función disponible en las diapositivas
+
+'''
+Esta función devuelve el accuracy de un modelo, definido como el porcentaje de
+etiquetas bien predichas frente al total de etiquetas. Como parámetros es
+necesario pasarle el vector de etiquetas verdaderas y el vector de etiquetas
+predichas, en el formato de keras (matrices donde cada etiqueta ocupa una fila,
+con un 1 en la posición de la clase a la que pertenece 0 en las demás).
+'''
 
 def calcularAccuracy(labels, preds):
-  labels = np.argmax(labels, axis=1)
-  preds = np.argmax(preds, axis=1)
-
+  labels = np.argmax(labels, axis = 1)
+  preds = np.argmax(preds, axis = 1)
   accuracy = sum(labels == preds)/len(labels)
-
   return accuracy
 
 #########################################################################
 ## FUNCIÓN PARA PINTAR LA PÉRDIDA Y EL ACCURACY EN TRAIN Y VALIDACIÓN ###
 #########################################################################
 
-# A completar: función disponible en las diapositivas
+# Completado: función disponible en las diapositivas
+'''
+Esta función pinta dos gráficas, una con la evolución de la función de pérdida en
+el conjunto de train y en el de validación, y otra con la evolución del accuracy
+en el conjunto de train y el de validación. Es necesario pasarle como parámetro
+el historial del entrenamiento del modelo (lo que devuelven las
+funciones fit() y fit_generator()).
+'''
 
 def mostrarEvolucion(hist):
     loss = hist.history['loss']
@@ -100,37 +118,76 @@ def mostrarEvolucion(hist):
 ################## DEFINICIÓN DEL MODELO BASENET ########################
 #########################################################################
 
-# A completar
+# Completado
 
+# Las imágenes son en color de 3 canales de 32x32 píxeles.
 img_rows, img_cols = 32, 32
+# Nos piden que número de clases sean 25
 num_classes = 25
+# Elegimos un tamaño de batch potencia de 2
 batch_size = 128
-epochs = 12
+# Elegimos un número de épocas aleatorio
+epochs = 10
 
+# Cargamos las imagenes
 (x_train, y_train), (x_test, y_test) = cargarImagenes()
-
+# Ponemos la dimensión
 input_shape = (img_rows, img_cols, 3)
-
+# El modelo es Sequential fuerza a que todas las capas de la red vayan una detrás
+# de otra de forma secuencial, sin permitir ciclos ni saltos entre las capas.
 model = Sequential()
-model.add(Conv2D(6, kernel_size=(5,5), activation='relu',
-                 input_shape=input_shape))
+# Añadimos una capa convolucional con:
+#   - Canales de salida: 6
+#   - Tamaño del kernel: 5
+#   - Activacion relu
+model.add(Conv2D(6, kernel_size=(5,5), activation='relu', input_shape=input_shape))
+# Añadimos una capa MaxPooling con:
+#   - Tamaño del kernel: 2
 model.add(MaxPooling2D(pool_size=(2,2)))
+# Añadimos una capa convolucional con:
+#   - Canales de salida: 16
+#   - Tamaño del kernel: 5
+#   - Activacion relu
 model.add(Conv2D(16, kernel_size=(5,5), activation='relu'))
+# Añadimos una capa MaxPooling con:
+#   - Tamaño del kernel: 2
 model.add(MaxPooling2D(pool_size=(2,2)))
+# Aplanamos la salida
 model.add(Flatten())
+# Definimos una capa fully connected con 50 neuronas
 model.add(Dense(50, activation='relu'))
+# Definimos como última capa una capa fully connected con tantas neuronas como
+# clases tenga el problema (25) y una activación softmax para transformar las
+# salidas de las neuronas en la probabilidad de pertenecer a cada clase.
 model.add(Dense(25, activation='softmax'))
+# Para ver una descripción del modelo
 model.summary()
 
 #########################################################################
 ######### DEFINICIÓN DEL OPTIMIZADOR Y COMPILACIÓN DEL MODELO ###########
 #########################################################################
 
-# A completar
+# Completado
+# Usamos gradiente descendente estocástico (SGD) con los parámetros siguientes:
+opt = SGD (lr = 0.01, decay = 1e-6, momentum = 0.9, nesterov = True)
+# Definimos la función de pérdida o función objetivo que se va a usar (la que
+# se va a minimizar). Como estamos en clasificación multiclase usamos
+# categorical_crossentropy también se puede especificar con el argumento metrics
+# las métricas que se quieren calcular a lo largo de todas las épocas de entrenamiento.
 model.compile(loss=keras.losses.categorical_crossentropy,
               optimizer=keras.optimizers.Adadelta(),
               metrics=['accuracy'])
 
+# Guardando los pesos de la red antes del primer entrenamiento (y después de la compilación) usando
+weights = model.get_weights()
+
+#########################################################################
+###################### ENTRENAMIENTO DEL MODELO #########################
+#########################################################################
+
+# Completado
+
+# Entrenamos el modelo con fit que recibe las imágenes de entrenamiento directamente.
 histograma = model.fit(x_train, y_train,
           batch_size=batch_size,
           epochs=epochs,
@@ -138,21 +195,12 @@ histograma = model.fit(x_train, y_train,
           validation_data=(x_test, y_test))
 
 mostrarEvolucion(histograma)
-score = model.evaluate(x_test, y_test, verbose=0)
+score = model.evaluate(x_test, y_test, verbose = 0)
 print('Test loss:', score[0])
 print('Test accuracy:', score[1])
 
-# Una vez tenemos el modelo base, y antes de entrenar, vamos a guardar los
-# pesos aleatorios con los que empieza la red, para poder reestablecerlos
-# después y comparar resultados entre no usar mejoras y sí usarlas.
-weights = model.get_weights()
-
-#########################################################################
-###################### ENTRENAMIENTO DEL MODELO #########################
-#########################################################################
-
-# A completar
-
+# Reestablecemos los pesos  antes del siguiente entrenamiento usando
+model.set_weights(weights)
 #########################################################################
 ################ PREDICCIÓN SOBRE EL CONJUNTO DE TEST ###################
 #########################################################################

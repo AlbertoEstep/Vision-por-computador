@@ -35,6 +35,7 @@ def normalizar_imagen(imagen):
                         imagen[i][j][k] = 255 * (imagen[i][j][k] - minimo[k]) / (maximo[k] - minimo[k])
     else:
         sys.exit('Imagen no valida')
+    return imagen
 
 def pinta_imagen(imagen, titulo):
     normalizar_imagen(imagen)
@@ -166,14 +167,16 @@ Usar la función Laplacian para el cálculo de la convolución 2D con una másca
         imagen - Imagen
         border - Tratamiento del borde de la imagen
         ksize – Tamaño de la abertura, debe ser impar y positivo.
-EXPLICAR
+
+Replicamos la función Laplacian con el siguiente algoritmo obtenemos la derivada segunda en el eje x y la derivada segunda en el eje y
+(esto con la función getDerivKernels) y hacemos la convolucion de la imagen con esas dos derivadas (con la función convolucion) y las sumamos.
 '''
-def laplaciana_de_gaussiana(imagen, border = cv2.BORDER_DEFAULT, ksize = 5):
+def laplaciana_de_gaussiana(imagen, border = cv2.BORDER_DEFAULT, ksize = 3):
     # La función calcula y devuelve los coeficientes de filtro para derivadas (de orden 2 en el eje x) de imágenes espaciales.
     derivada2x0y = cv2.getDerivKernels(2, 0, ksize)
     # La función calcula y devuelve los coeficientes de filtro para derivadas (de orden 2 en el eje y) de imágenes espaciales.
     derivada0x2y = cv2.getDerivKernels(0, 2, ksize)
-    return convolucion(image, derivada2x0y[0], derivada2x0y[1], border) + convolucion(image, derivada0x2y[0], derivada0x2y[1], border)
+    return convolucion(imagen, derivada2x0y[0], derivada2x0y[1], border) + convolucion(imagen, derivada0x2y[0], derivada0x2y[1], border)
 
 '''
 Una función que genere una representación en pirámide Gaussiana de 4 niveles de una imagen.
@@ -182,7 +185,8 @@ Una función que genere una representación en pirámide Gaussiana de 4 niveles 
         nivel – Indica el nivel de la pirámide
         border - Tratamiento del borde de la imagen
 
-EXPLICAR Y MAS EJEMPLOS
+La pirámide consiste en una secuencia de imágenes, cada cuál de mitad tamaño que la anterior y aplicando un filtro gaussiano.
+La pirámide hace de simulador de cómo se verían las imágenes a una cierta distancia.
 '''
 
 # Una función que genere una representación en pirámide Gaussiana de 4 niveles de una imagen.
@@ -190,7 +194,7 @@ def piramide_gaussiana(imagen, nivel = 4, border = cv2.BORDER_CONSTANT):
     p = [imagen]
     copia = np.copy(imagen)
     for n in range(nivel):
-        # Aplicamos el alisamiento gaussiano
+        # Aplicamos el alisamiento gaussiano con valores de 5 del kernel y 7 de sigma
         copia = gaussian_blur(copia, 5, 5, 7, 7, border = border)
         # Aplicamos el subsampling
         copia = subsampling(copia)
@@ -204,13 +208,24 @@ funcionamiento usando bordes.
     Parametros:
         imagen - Imagen
         nivel – Indica el nivel de la pirámide
+        sigma – Desviación estándar gaussiana.
         border - Tratamiento del borde de la imagen
 
-EXPLICAR Y MAS EJEMPLOS
-
-def laplacian_pyramid(imagen, nivel = 4, border = cv2.BORDER_CONSTANT):
-
+Obtenemos la piramide laplaciana de una imagen a partir de la gaussiana. Los distintos niveles nos muestran
+los bordes de la imagen en cada paso, ya que nos quedamos con las frecuencias altas.
 '''
+
+
+def piramide_laplaciana(imagen, nivel = 4, border = cv2.BORDER_DEFAULT):
+    p_gaussiana = piramide_gaussiana(imagen, nivel+1, border)
+    p_laplaciana = []
+    for i in range(nivel):
+        aux = cv2.resize(p_gaussiana[i+1], (p_gaussiana[i].shape[1], p_gaussiana[i].shape[0]))
+        aux = gaussian_blur(aux, 5, 5, 7, 7, border = border)
+        normalizado = normalizar_imagen(cv2.subtract(p_gaussiana[i], aux))
+        p_laplaciana.append(normalizado)
+    return p_laplaciana
+
 
 '''
 Escribir una función que muestre las tres imágenes ( alta, baja e híbrida) en una misma ventana. (Recordar que las
@@ -221,7 +236,8 @@ imágenes después de una convolución contienen número flotantes que pueden se
         imagen_falta - Imagen usada para frecuencias altas
         sigma_falta: Sigma para la imagen de frecuencias altas.
 
-EXPLICAR
+Mezclando adecuadamente una parte de las frecuencias altas de una imagen con una parte de las frecuencias bajas de
+otra imagen, obtenemos una imagen híbrida que admite distintas interpretaciones a distintas distancias.
 '''
 def hibrida(imagen_fbaja, sigma_fbaja, imagen_falta, sigma_falta):
     # Obtenemos las frecuencias bajas de la imagen
@@ -236,21 +252,23 @@ def hibrida(imagen_fbaja, sigma_fbaja, imagen_falta, sigma_falta):
 def ejercicio1():
     # Ejercicio 1 A 1
     imagen = lee_imagen('imagenes/cat.bmp', 1)
-    pintar_multiples_imagenes_pyplot([imagen, gaussian_blur(imagen, 7, 7, 7, 7), gaussian_blur(imagen, 7, 7, 11, 11), gaussian_blur(imagen, 7, 7, 21, 21) ], ['cat', 'blur_ksize7_sigma7', 'blur_ksize7_sigma11', 'blur_ksize7_sigma21'], 2, 2, 'GaussianBlur')
-    pintar_multiples_imagenes_pyplot([imagen, gaussian_blur(imagen, 5, 5, 7, 7), gaussian_blur(imagen, 9, 9, 7, 7), gaussian_blur(imagen, 15, 15, 7, 7) ], ['cat', 'blur_ksize5_sigma7', 'blur_ksize9_sigma7', 'blur_ksize15_sigma7'], 2, 2, 'GaussianBlur')
-    pintar_multiples_imagenes_pyplot([imagen, gaussian_blur(imagen, 7, 7, 7, 7, cv2.BORDER_CONSTANT), gaussian_blur(imagen, 7, 7, 7, 7, cv2.BORDER_REFLECT), gaussian_blur(imagen, 7, 7, 7, 7) ], ['cat', 'blur_border_constant', 'blur_border_reflect', 'blur_default'], 2, 2, 'GaussianBlur')
+    pintar_multiples_imagenes_pyplot([imagen, gaussian_blur(imagen, 7, 7, 5, 5), gaussian_blur(imagen, 7, 7, 7, 7), gaussian_blur(imagen, 7, 7, 21, 21) ], ['cat', 'blur_sigma5', 'blur_sigma7', 'blur_sigma21'], 2, 2, 'GaussianBlur distinto sigma')
+    pintar_multiples_imagenes_pyplot([imagen, gaussian_blur(imagen, 5, 5, 7, 7), gaussian_blur(imagen, 9, 9, 7, 7), gaussian_blur(imagen, 15, 15, 7, 7) ], ['cat', 'blur_ksize5', 'blur_ksize9', 'blur_ksize15'], 2, 2, 'GaussianBlur, distinto valor de mascara')
+    pintar_multiples_imagenes_pyplot([imagen, gaussian_blur(imagen, 7, 7, 7, 7, cv2.BORDER_CONSTANT), gaussian_blur(imagen, 7, 7, 7, 7, cv2.BORDER_REFLECT), gaussian_blur(imagen, 7, 7, 7, 7) ], ['cat', 'blur_border_constant', 'blur_border_reflect', 'blur_default'], 2, 2, 'GaussianBlur, distinto borde')
+    input("Fin del apartado 1 A 1, pulsa Enter")
 
 	# Ejercicio 1 A 2
     imagen = lee_imagen('imagenes/cat.bmp', 1)
     pintar_multiples_imagenes_pyplot([convolucion1D(imagen, 1, 1, 1), convolucion1D(imagen, 2, 2, 1)], ['dx1_dy1_ksize1', 'dx2_dy2_ksize1'], 1, 2, 'Convolucion1D: Variación en el orden de las derivadas')
     pintar_multiples_imagenes_pyplot([convolucion1D(imagen, 1, 1, 3), convolucion1D(imagen, 1, 1, 5)], ['dx1_dy1_ksize3', 'dx1_dy1_ksize5'], 1, 2, 'Convolucion1D: Variacion en el tamaño de la abertura')
     pintar_multiples_imagenes_pyplot([convolucion1D(imagen, 0, 2, 3), convolucion1D(imagen, 2, 0, 3)], ['dx0_dy2_ksize3', 'dx2_dy0_ksize3'], 1, 2, 'Convolucion1D: Variación en los ejes de las derivadas')
-    pintar_multiples_imagenes_pyplot([convolucion1D(imagen, 1, 1, 3, border = cv2.BORDER_CONSTANT), convolucion1D(imagen, 1, 1, 3, border = cv2.BORDER_REFLECT)], ['BORDER_CONSTANT', 'BORDER_REFLECT'], 1, 2, 'Convolucion1D: Variación en los ejes de las derivadas')
-
+    pintar_multiples_imagenes_pyplot([convolucion1D(imagen, 1, 1, 3, border = cv2.BORDER_CONSTANT), convolucion1D(imagen, 1, 1, 3, border = cv2.BORDER_REFLECT)], ['BORDER_CONSTANT', 'BORDER_REFLECT'], 1, 2, 'Convolucion1D: Variación en los bordes')
+    input("Fin del apartado 1 A 2, pulsa Enter")
     # Ejercicio 1 B
     imagen = lee_imagen('imagenes/cat.bmp', 1)
-    pintar_multiples_imagenes_pyplot([imagen, laplaciana_de_gaussiana(imagen, 1, cv2.BORDER_REPLICATE), laplaciana_de_gaussiana(imagen, 1, cv2.BORDER_REFLECT)], ['Original', '1 - Replicate', '1 - Reflect'], 1, 3, 'Laplacian')
-    pintar_multiples_imagenes_pyplot([imagen, laplaciana_de_gaussiana(imagen, 3, cv2.BORDER_REPLICATE), laplaciana_de_gaussiana(imagen, 3, cv2.BORDER_REFLECT)], ['Original', '3 - Replicate', '3 - Reflect'], 1, 3, 'Laplacian')
+    pintar_multiples_imagenes_pyplot([imagen, laplaciana_de_gaussiana(imagen, cv2.BORDER_REPLICATE, 7), laplaciana_de_gaussiana(imagen, cv2.BORDER_REFLECT, 7)], ['Original', '1 - Replicate', '1 - Reflect'], 1, 3, 'Laplacian')
+    pintar_multiples_imagenes_pyplot([imagen, 9*laplaciana_de_gaussiana(imagen, cv2.BORDER_REPLICATE, 19), 9*laplaciana_de_gaussiana(imagen, cv2.BORDER_REFLECT, 19)], ['Original', '3 - Replicate', '3 - Reflect'], 1, 3, 'Laplacian')
+    input("Fin del apartado 1 B, pulsa Enter")
 
 def ejercicio2():
     # Ejercicio 2 A
@@ -258,11 +276,14 @@ def ejercicio2():
     imprime_varias_imagenes_en_una(piramide_gaussiana(imagen, 4, cv2.BORDER_DEFAULT), "Piramide gaussiana")
     imprime_varias_imagenes_en_una(piramide_gaussiana(imagen, 4, cv2.BORDER_CONSTANT), "Piramide gaussiana borde constante")
     imprime_varias_imagenes_en_una(piramide_gaussiana(imagen, 4, cv2.BORDER_REFLECT), "Piramide gaussiana borde reflect")
+    input("Fin del apartado 2 A, pulsa Enter")
 
     # Ejercicio 2 B
     imagen = lee_imagen('imagenes/cat.bmp', 0)
-
-    # SIN HACER imprime_varias_imagenes_en_una(laplacian_pyramid(imagen), "Piramide Laplaciana")
+    imprime_varias_imagenes_en_una(piramide_laplaciana(imagen, border = cv2.BORDER_DEFAULT), "Piramide Laplaciana BORDER_DEFAULT")
+    imprime_varias_imagenes_en_una(piramide_laplaciana(imagen, border = cv2.BORDER_REPLICATE), "Piramide Laplaciana BORDER_REPLICATE")
+    imprime_varias_imagenes_en_una(piramide_laplaciana(imagen, border = cv2.BORDER_REFLECT), "Piramide Laplaciana BORDER_REFLECT")
+    input("Fin del apartado 2 B, pulsa Enter")
 
 def ejercicio3():
 
@@ -280,6 +301,7 @@ def ejercicio3():
     pajaro = lee_imagen("imagenes/bird.bmp", 0)
     avion_pajaro = hibrida(avion, 5, pajaro, 15)
     imprime_varias_imagenes_en_una(avion_pajaro, 'Avion - Pajaro')
+    input("Fin del apartado 3 A-B, pulsa Enter")
 
     '''
     Construir pirámides gaussianas de al menos 4 níveles con
@@ -290,10 +312,11 @@ def ejercicio3():
     imprime_varias_imagenes_en_una(piramide_bici_moto, 'Piramide gaussiana de la bici y la moto')
 
     piramide_einstein_marilyn = piramide_gaussiana(einstein_marilyn[2], 4)
-    imprime_varias_imagenes_en_una(piramide_einstein_marilyn, 'Piramide gaussiana de Einstein y la Marilyn')
+    imprime_varias_imagenes_en_una(piramide_einstein_marilyn, 'Piramide gaussiana de Einstein y Marilyn')
 
     piramide_avion_pajaro = piramide_gaussiana(avion_pajaro[2], 4)
-    imprime_varias_imagenes_en_una(piramide_avion_pajaro, 'Piramide gaussiana de Einstein y la Marilyn')
+    imprime_varias_imagenes_en_una(piramide_avion_pajaro, 'Piramide gaussiana del avion y el pajaro')
+    input("Fin del apartado 3 C, pulsa Enter")
 
 def bonus2():
     bici = lee_imagen("imagenes/bicycle.bmp", 1)
@@ -320,13 +343,18 @@ def bonus2():
     submarino = lee_imagen("imagenes/submarine.bmp", 1)
     pez_submarino = hibrida(pez, 5, submarino, 15)
     imprime_varias_imagenes_en_una(pez_submarino, 'Pez - Submarino')
+    input("Fin del bonus 2, pulsa Enter")
+
 
 def bonus3():
-    billar = lee_imagen("imagenes/pelota_billar.jpg", 1)
-    futbol = lee_imagen("imagenes/pelota_futbol.jpg", 1)
+    billar = lee_imagen("imagenes/pelota_billar.jpg", 0)
+    futbol = lee_imagen("imagenes/pelota_futbol.jpg", 0)
     billar, futbol = igualar(billar, futbol)
     billar_futbol = hibrida(billar, 5, futbol, 15)
     imprime_varias_imagenes_en_una(billar_futbol, 'Billar - Futbol')
+    piramide_billar_futbol = piramide_gaussiana(billar_futbol[2], 4)
+    imprime_varias_imagenes_en_una(piramide_billar_futbol, 'Piramide gaussiana de la pelota de billar y la de futbol')
+    input("Fin del bonus 3, pulsa Enter para fin")
 
 def main():
     ejercicio1()
