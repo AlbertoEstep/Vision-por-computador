@@ -12,12 +12,15 @@ import keras.utils as np_utils
 # Modelos y capas que se van a usar
 from keras.models import Sequential
 from keras.layers import Dense, Dropout, Flatten
-from keras.layers import Conv2D, MaxPooling2D
+from keras.layers import Conv2D, MaxPooling2D, BatchNormalization
 from keras import backend as K
 # Importar el optimizador a usar
 from keras.optimizers import SGD
 # Importar el conjunto de datos
 from keras.datasets import cifar100
+
+
+from keras.preprocessing.image import ImageDataGenerator
 
 #########################################################################
 ######## FUNCIÓN PARA CARGAR Y MODIFICAR EL CONJUNTO DE DATOS ###########
@@ -125,43 +128,45 @@ img_rows, img_cols = 32, 32
 # Nos piden que número de clases sean 25
 num_classes = 25
 # Elegimos un tamaño de batch potencia de 2
-batch_size = 128
+batch_size = 16
 # Elegimos un número de épocas aleatorio
-epochs = 10
+epochs = 24
 
-# Cargamos las imagenes
-(x_train, y_train), (x_test, y_test) = cargarImagenes()
-# Ponemos la dimensión
-input_shape = (img_rows, img_cols, 3)
-# El modelo es Sequential fuerza a que todas las capas de la red vayan una detrás
-# de otra de forma secuencial, sin permitir ciclos ni saltos entre las capas.
-model = Sequential()
-# Añadimos una capa convolucional con:
-#   - Canales de salida: 6
-#   - Tamaño del kernel: 5
-#   - Activacion relu
-model.add(Conv2D(6, kernel_size=(5,5), activation='relu', input_shape=input_shape))
-# Añadimos una capa MaxPooling con:
-#   - Tamaño del kernel: 2
-model.add(MaxPooling2D(pool_size=(2,2)))
-# Añadimos una capa convolucional con:
-#   - Canales de salida: 16
-#   - Tamaño del kernel: 5
-#   - Activacion relu
-model.add(Conv2D(16, kernel_size=(5,5), activation='relu'))
-# Añadimos una capa MaxPooling con:
-#   - Tamaño del kernel: 2
-model.add(MaxPooling2D(pool_size=(2,2)))
-# Aplanamos la salida
-model.add(Flatten())
-# Definimos una capa fully connected con 50 neuronas
-model.add(Dense(50, activation='relu'))
-# Definimos como última capa una capa fully connected con tantas neuronas como
-# clases tenga el problema (25) y una activación softmax para transformar las
-# salidas de las neuronas en la probabilidad de pertenecer a cada clase.
-model.add(Dense(25, activation='softmax'))
-# Para ver una descripción del modelo
-model.summary()
+def defincionModeloBaseNet():
+    # Ponemos la dimensión
+    input_shape = (img_rows, img_cols, 3)
+    # El modelo es Sequential fuerza a que todas las capas de la red vayan una detrás
+    # de otra de forma secuencial, sin permitir ciclos ni saltos entre las capas.
+    model = Sequential()
+    # Añadimos una capa convolucional con:
+    #   - Canales de salida: 6
+    #   - Tamaño del kernel: 5
+    #   - Activacion relu
+    model.add(Conv2D(6, kernel_size=(5,5), activation='relu', input_shape=input_shape))
+    # Añadimos una capa MaxPooling con:
+    #   - Tamaño del kernel: 2
+    model.add(MaxPooling2D(pool_size=(2,2)))
+    # Añadimos una capa convolucional con:
+    #   - Canales de salida: 16
+    #   - Tamaño del kernel: 5
+    #   - Activacion relu
+    model.add(Conv2D(16, kernel_size=(5,5), activation='relu'))
+    # Añadimos una capa MaxPooling con:
+    #   - Tamaño del kernel: 2
+    model.add(MaxPooling2D(pool_size=(2,2)))
+    # Aplanamos la salida
+    model.add(Flatten())
+    # Definimos una capa fully connected con 50 neuronas
+    model.add(Dense(50, activation='relu'))
+    # Definimos como última capa una capa fully connected con tantas neuronas como
+    # clases tenga el problema (25) y una activación softmax para transformar las
+    # salidas de las neuronas en la probabilidad de pertenecer a cada clase.
+    model.add(Dense(25, activation='softmax'))
+    # Para ver una descripción del modelo
+    model.summary()
+    return model
+
+
 
 #########################################################################
 ######### DEFINICIÓN DEL OPTIMIZADOR Y COMPILACIÓN DEL MODELO ###########
@@ -170,16 +175,19 @@ model.summary()
 # Completado
 # Usamos gradiente descendente estocástico (SGD) con los parámetros siguientes:
 opt = SGD (lr = 0.01, decay = 1e-6, momentum = 0.9, nesterov = True)
-# Definimos la función de pérdida o función objetivo que se va a usar (la que
-# se va a minimizar). Como estamos en clasificación multiclase usamos
-# categorical_crossentropy también se puede especificar con el argumento metrics
-# las métricas que se quieren calcular a lo largo de todas las épocas de entrenamiento.
-model.compile(loss=keras.losses.categorical_crossentropy,
-              optimizer=keras.optimizers.Adadelta(),
-              metrics=['accuracy'])
 
-# Guardando los pesos de la red antes del primer entrenamiento (y después de la compilación) usando
-weights = model.get_weights()
+def compile(model):
+    # Definimos la función de pérdida o función objetivo que se va a usar (la que
+    # se va a minimizar). Como estamos en clasificación multiclase usamos
+    # categorical_crossentropy también se puede especificar con el argumento metrics
+    # las métricas que se quieren calcular a lo largo de todas las épocas de entrenamiento.
+    model.compile(loss=keras.losses.categorical_crossentropy,
+                  optimizer=keras.optimizers.Adadelta(),
+                  metrics=['accuracy'])
+
+    # Guardando los pesos de la red antes del primer entrenamiento (y después de la compilación) usando
+    weights = model.get_weights()
+    return weights
 
 #########################################################################
 ###################### ENTRENAMIENTO DEL MODELO #########################
@@ -187,25 +195,41 @@ weights = model.get_weights()
 
 # Completado
 
-# Entrenamos el modelo con fit que recibe las imágenes de entrenamiento directamente.
-histograma = model.fit(x_train, y_train,
-          batch_size=batch_size,
-          epochs=epochs,
-          verbose=1,
-          validation_data=(x_test, y_test))
+def entrenamiento(model, x_train, y_train, x_test, y_test):
+    # Entrenamos el modelo con fit que recibe las imágenes de entrenamiento directamente.
+    histograma = model.fit(x_train, y_train,
+              batch_size=batch_size,
+              epochs=epochs,
+              verbose=1,
+              validation_data=(x_test, y_test))
+    return histograma
 
-mostrarEvolucion(histograma)
-score = model.evaluate(x_test, y_test, verbose = 0)
-print('Test loss:', score[0])
-print('Test accuracy:', score[1])
 
-# Reestablecemos los pesos  antes del siguiente entrenamiento usando
-model.set_weights(weights)
+
 #########################################################################
 ################ PREDICCIÓN SOBRE EL CONJUNTO DE TEST ###################
 #########################################################################
 
-# A completar
+# Completado
+
+def prediccion(model, x_test, y_test):
+    score = model.evaluate(x_test, y_test, verbose = 0)
+    print('Test loss:', score[0])
+    print('Test accuracy:', score[1])
+
+def ejercicio1():
+    # Cargamos las imagenes
+    (x_train, y_train), (x_test, y_test) = cargarImagenes()
+    model = defincionModeloBaseNet()
+    weights = compile(model)
+    # Reestablecemos los pesos  antes del siguiente entrenamiento usando
+    model.set_weights(weights)
+    histograma = entrenamiento(model, x_train, y_train, x_test, y_test)
+    print(histograma)
+    mostrarEvolucion(histograma)
+    prediccion(model, x_test, y_test)
+
+ejercicio1()
 
 #########################################################################
 ########################## MEJORA DEL MODELO ############################
