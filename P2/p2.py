@@ -130,7 +130,7 @@ num_classes = 25
 # Elegimos un tamaño de batch potencia de 2
 batch_size = 16
 # Elegimos un número de épocas aleatorio
-epochs = 64
+epochs = 24
 
 def definicionModeloBaseNet():
     # Ponemos la dimensión
@@ -175,6 +175,8 @@ def definicionModeloBaseNet():
 # Completado
 # OPTIMIZADOR
 optEj1 = keras.optimizers.Adadelta()
+# OPTIMIZADOR: Usamos gradiente descendente estocástico (SGD) con los parámetros siguientes:
+optEj2 = SGD(lr = 0.01, decay = 1e-6, momentum = 0.9, nesterov = True)
 
 def compile(model, opt):
     # Definimos la función de pérdida o función objetivo que se va a usar (la que
@@ -241,8 +243,7 @@ def ejercicio1():
 # Se recomienda ir entrenando con cada paso para comprobar
 # en qué grado mejora cada uno de ellos.
 
-# OPTIMIZADOR: Usamos gradiente descendente estocástico (SGD) con los parámetros siguientes:
-optEj2 = SGD(lr = 0.01, decay = 1e-6, momentum = 0.9, nesterov = True)
+
 
 def definicionModeloMejorado():
     # Ponemos la dimensión
@@ -280,91 +281,6 @@ def definicionModeloMejorado():
     model.summary()
     return model
 
-'''
-def definicionModeloMejorado():
-    # Ponemos la dimensión
-    input_shape = (img_rows, img_cols, 3)
-    # El modelo es Sequential fuerza a que todas las capas de la red vayan una detrás
-    # de otra de forma secuencial, sin permitir ciclos ni saltos entre las capas.
-    model = Sequential()
-    # Añadimos una capa convolucional con:
-    #   - Canales de salida: 18
-    #   - Tamaño del kernel: 5
-    #   - Activacion relu
-    model.add(Conv2D(18, kernel_size=(5,5), activation='relu', input_shape=input_shape))
-    # Añadimos una capa MaxPooling con:
-    #   - Tamaño del kernel: 2
-    model.add(MaxPooling2D(pool_size=(2,2)))
-    # Añadimos una capa convolucional con:
-    #   - Canales de salida: 16
-    #   - Tamaño del kernel: 5
-    #   - Activacion relu
-    model.add(Conv2D(16, kernel_size=(5,5), activation='relu'))
-    # Añadimos una capa MaxPooling con:
-    #   - Tamaño del kernel: 2
-    model.add(MaxPooling2D(pool_size=(2,2)))
-    # Añadimos una capa convolucional con:
-    #   - Canales de salida: 14
-    #   - Tamaño del kernel: 5
-    #   - Activacion relu
-    model.add(Conv2D(14, kernel_size=(5,5), activation='relu', padding = 'same'))
-    model.add(Flatten())
-    # Definimos una capa fully connected con 50 neuronas
-    model.add(Dense(50, activation='relu'))
-    # Definimos una capa fully connected con 50 neuronas
-    model.add(Dense(50, activation='relu'))
-    # Definimos como última capa una capa fully connected con tantas neuronas como
-    # clases tenga el problema (25) y una activación softmax para transformar las
-    # salidas de las neuronas en la probabilidad de pertenecer a cada clase.
-    model.add(Dense(25, activation='softmax'))
-    # Para ver una descripción del modelo
-    model.summary()
-    return model
-    '''
-
-def definicionModeloMejoradoJo():
-    # Ponemos la dimensión
-    input_shape = (img_rows, img_cols, 3)
-    # El modelo es Sequential fuerza a que todas las capas de la red vayan una detrás
-    # de otra de forma secuencial, sin permitir ciclos ni saltos entre las capas.
-    model = Sequential()
-    # Añadimos una capa convolucional con:
-    #   - Canales de salida: 6
-    #   - Tamaño del kernel: 5
-    #   - Activacion relu
-    ###### AÑADO PADDING
-    model.add(Conv2D(6, kernel_size=(5,5), padding='same', activation='relu', input_shape=input_shape))
-    # Añadimos una capa MaxPooling con:
-    #   - Tamaño del kernel: 2
-    model.add(MaxPooling2D(pool_size=(2,2)))
-    ###### AÑADO CAPA DROPOUT
-    model.add(Dropout(0.25))
-    # Añadimos una capa convolucional con:
-    #   - Canales de salida: 16
-    #   - Activacion relu
-    #######   - Tamaño del kernel: 3 (MODIFICADO DE 5 A 3)
-    ###### AÑADO PADDING
-    model.add(Conv2D(16, kernel_size=(3,3), padding='same', activation='relu'))
-    ##### AÑADIMOS CAPA CONVOLUCIONAL NUEVA:
-    #   - Canales de salida: 6
-    #   - Activacion relu
-    #   - Tamaño del kernel: 3
-    model.add(Conv2D(6, kernel_size=(3, 3), activation='relu'))
-    ##### AÑADIMOS CAPA BatchNormalization NUEVA:
-    model.add(BatchNormalization())
-    ###### AÑADO CAPA DROPOUT
-    model.add(Dropout(0.25))
-    # Aplanamos la salida
-    model.add(Flatten())
-    # Definimos una capa fully connected con 50 neuronas
-    model.add(Dense(50, activation='relu'))
-    # Definimos como última capa una capa fully connected con tantas neuronas como
-    # clases tenga el problema (25) y una activación softmax para transformar las
-    # salidas de las neuronas en la probabilidad de pertenecer a cada clase.
-    model.add(Dense(25, activation='softmax'))
-    # Para ver una descripción del modelo
-    model.summary()
-    return model
 
 def ejercicio2(batch_size, epochs):
     (x_train, y_train), (x_test, y_test) = cargarImagenes()
@@ -373,20 +289,28 @@ def ejercicio2(batch_size, epochs):
     # Reestablecemos los pesos  antes del siguiente entrenamiento usando
     model.set_weights(weights)
 
-    datagen = ImageDataGenerator(validation_split = 0.1)
-    datagen.fit(x_train)
-    datagen.standardize(x_test)
+    datagen_train = ImageDataGenerator(featurewise_center=True, featurewise_std_normalization=True, horizontal_flip=True, zoom_range=0.7, validation_split=0.1)
+    datagen_test = ImageDataGenerator(featurewise_center=True, featurewise_std_normalization=True)
+    datagen_train.fit(x_train)
+    datagen_test.fit(x_train)
     histograma = model.fit_generator(
-        generator = datagen.flow(x_train, y_train, batch_size, subset='training'),
+        generator = datagen_train.flow(x_train, y_train, batch_size, subset='training'),
         steps_per_epoch = len(x_train)*0.9/batch_size,
         epochs = epochs,
-        validation_data = datagen.flow(x_train, y_train, batch_size, subset='validation'),
+        validation_data = datagen_train.flow(x_train, y_train, batch_size, subset='validation'),
         validation_steps = len(x_train)*0.1/batch_size,
     )
     print(histograma)
-    mostrarEvolucion(histograma)
 
-    preds = model.predict_generator(datagen.flow(x_test, batch_size = 1, shuffle = False), steps = len(x_test))
+    #Pintamos solo el histograma del accuracy pues el histograma de la funcion loss da problemas con mi version de keras
+    accuracy = histograma.history['accuracy']
+    val_accuracy = histograma.history['val_accuracy']
+    plt.plot(accuracy)
+    plt.plot(val_accuracy)
+    plt.legend(['Training accuracy', 'Validation accuracy'])
+    plt.show()
+
+    preds = model.predict_generator(datagen_test.flow(x_test, batch_size = 1, shuffle = False), steps = len(x_test))
     score = calcularAccuracy(y_test, preds)
     print('Test accuracy:', score)
 
