@@ -199,12 +199,12 @@ def compile(model, opt):
 
 def entrenamiento(model, x_train, y_train, x_test, y_test):
     # Entrenamos el modelo con fit que recibe las imágenes de entrenamiento directamente.
-    histograma = model.fit(x_train, y_train,
+    historial = model.fit(x_train, y_train,
               batch_size=batch_size,
               epochs=epochs,
               verbose=1,
               validation_data=(x_test, y_test))
-    return histograma
+    return historial
 
 
 
@@ -226,14 +226,14 @@ def ejercicio1():
     weights = compile(model, optEj1)
     # Reestablecemos los pesos  antes del siguiente entrenamiento usando
     model.set_weights(weights)
-    histograma = entrenamiento(model, x_train, y_train, x_test, y_test)
-    print(histograma)
-    mostrarEvolucion(histograma)
+    historial = entrenamiento(model, x_train, y_train, x_test, y_test)
+    print(historial)
+    mostrarEvolucion(historial)
     prediccion(model, x_test, y_test)
 
-#ejercicio1()
+ejercicio1()
 
-
+input("Fin del ejercicio 1, pulsa Enter")
 #########################################################################
 ########################## MEJORA DEL MODELO ############################
 #########################################################################
@@ -256,20 +256,31 @@ def definicionModeloMejorado():
     #   - Tamaño del kernel: 5
     #   - Activacion relu
     model.add(Conv2D(18, kernel_size=(5,5), activation='relu', input_shape=input_shape))
+    # Añadimos una capa de normalización:
+    model.add(BatchNormalization())
+    # Añadimos una capa MaxPooling con:
+    #   - Tamaño del kernel: 2
+    model.add(MaxPooling2D(pool_size=(2,2)))
     # Añadimos una capa convolucional con:
     #   - Canales de salida: 16
     #   - Tamaño del kernel: 5
     #   - Activacion relu
-    model.add(BatchNormalization())
-    model.add(MaxPooling2D(pool_size=(2,2)))
     model.add(Conv2D(16, kernel_size=(5,5), activation='relu'))
     # Añadimos una capa MaxPooling con:
     #   - Tamaño del kernel: 2
     model.add(MaxPooling2D(pool_size=(2,2)))
+    # Añadimos una capa de normalización:
     model.add(BatchNormalization())
+    # Añadimos una capa Dropout que deja inactivas la mitad de las neuronas
     model.add(Dropout(0.5))
+    # Añadimos una capa convolucional con:
+    #   - Canales de salida: 14
+    #   - Tamaño del kernel: 5
+    #   - Activacion relu
     model.add(Conv2D(14, kernel_size=(5,5), activation='relu', padding = 'same'))
+    # Añadimos una capa de normalización:
     model.add(BatchNormalization())
+    # Aplanamos los datos en un solo vector
     model.add(Flatten())
     # Definimos una capa fully connected con 50 neuronas
     model.add(Dense(50, activation='relu'))
@@ -293,18 +304,18 @@ def ejercicio2(batch_size, epochs):
     datagen_test = ImageDataGenerator(featurewise_center=True, featurewise_std_normalization=True)
     datagen_train.fit(x_train)
     datagen_test.fit(x_train)
-    histograma = model.fit_generator(
+    historial = model.fit_generator(
         generator = datagen_train.flow(x_train, y_train, batch_size, subset='training'),
         steps_per_epoch = len(x_train)*0.9/batch_size,
         epochs = epochs,
         validation_data = datagen_train.flow(x_train, y_train, batch_size, subset='validation'),
         validation_steps = len(x_train)*0.1/batch_size,
     )
-    print(histograma)
+    print(historial)
 
-    #Pintamos solo el histograma del accuracy pues el histograma de la funcion loss da problemas con mi version de keras
-    accuracy = histograma.history['accuracy']
-    val_accuracy = histograma.history['val_accuracy']
+    #Pintamos solo el historial del accuracy pues el historial de la funcion loss da problemas con mi version de keras
+    accuracy = historial.history['accuracy']
+    val_accuracy = historial.history['val_accuracy']
     plt.plot(accuracy)
     plt.plot(val_accuracy)
     plt.legend(['Training accuracy', 'Validation accuracy'])
@@ -315,3 +326,5 @@ def ejercicio2(batch_size, epochs):
     print('Test accuracy:', score)
 
 ejercicio2(batch_size, epochs)
+
+input("Fin del ejercicio 2, pulsa Enter")
