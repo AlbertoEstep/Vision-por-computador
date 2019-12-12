@@ -6,17 +6,32 @@
 import cv2
 import numpy as np
 import sys
+import math
+import matplotlib.pyplot as plt
+import copy
 
 # Funcion para leer las imagenes de la P1
 def lee_imagen(file_name):
-    imagen = cv2.imread(file_name)
-    imagen = cv2.cvtColor(imagen, cv2.COLOR_RGB2GRAY)
-    imagen = imagen.astype(np.float64)
+    imagen = cv2.imread(file_name, 0)
     return imagen
 
-# Indica si la imagen está en escala de grises
-def esBlancoNegro(imagen):
-    return len(imagen.shape) == 2
+# Normalizamos la matriz
+def normaliza(imagen):
+    max = np.amax(imagen)
+    min = np.amin(imagen)
+    if max>255 or min<0:
+        for i in range(imagen.shape[0]):
+            for j in range(imagen.shape[1]):
+                imagen[i][j] = (imagen[i][j]-min)/(max-min) * 255
+    return imagen
+
+# Mostramos la imagen
+def pinta_imagen(imagen, titulo = "Titulo"):
+    imagen = normaliza(imagen)
+    imagen = imagen.astype(np.uint8)
+    plt.figure(0).canvas.set_window_title(titulo)
+    plt.imshow(imagen, cmap = "gray")
+    plt.show()
 
 # Calculo de la convolución una máscara arbitraria.
 def convolucion(imagen, kx, ky, border = cv2.BORDER_DEFAULT):
@@ -37,6 +52,29 @@ def convolucion(imagen, kx, ky, border = cv2.BORDER_DEFAULT):
     imagen = cv2.filter2D(imagen, -1, kx, borderType = border)
     imagen = cv2.filter2D(imagen, -1, ky, borderType = border)
     return imagen
+
+'''
+def convolution_c(img, sigma = 0, border = cv2.BORDER_DEFAULT):
+    img = copy.deepcopy(img)
+    kernel_x = cv2.getGaussianKernel(6*sigma+1, sigma)
+    kernel_y = kernel_x
+    if(len(img.shape) == 2):
+        rows, cols = img.shape
+    else:
+        sys.exit("Imagen no valida")
+
+    for i in range(rows):
+        convolucion = cv2.filter2D(img[i, :], -1, kernel_x, borderType=border)
+        img[i, :] = [sublist[0] for sublist in convolucion]
+
+    for i in range(cols):
+        convolucion = cv2.filter2D(img[:, i], -1, kernel_y, borderType=border)
+        img[:, i] = [sublist[0] for sublist in convolucion]
+
+    cv2.normalize(img, img, 0, 255, cv2.NORM_MINMAX)
+
+    return img
+'''
 
 # El cálculo de la convolución de una imagen con una máscara 2D.
 def gaussian_blur(imagen, kx = 0, ky = 0, sigmax = 0, sigmay = 0, border = cv2.BORDER_DEFAULT):
@@ -64,7 +102,7 @@ def gaussian_blur(imagen, kx = 0, ky = 0, sigmax = 0, sigmay = 0, border = cv2.B
     return imagen
 
 # Representación en pirámide Gaussiana de 4 niveles de una imagen.
-def piramide_gaussiana(imagen, nivel = 4, border = cv2.BORDER_CONSTANT):
+def piramide_gaussiana(imagen, nivel = 4, border = cv2.BORDER_DEFAULT):
     '''
     Una función que genere una representación en pirámide Gaussiana de 4 niveles de una imagen.
         Parametros:
@@ -76,17 +114,50 @@ def piramide_gaussiana(imagen, nivel = 4, border = cv2.BORDER_CONSTANT):
     copia = np.copy(imagen)
     for n in range(nivel):
         # Aplicamos el alisamiento gaussiano con valores de 5 del kernel y 7 de sigma
-        copia = gaussian_blur(copia, 5, 5, 7, 7, border = border)
-        # Aplicamos el subsampling
+        copia = gaussian_blur(copia, 3, 3, 7, 7, border = border)
         p.append(cv2.pyrDown(copia, borderType = border))
     return p
 
+'''
+def piramide_gaussiana(imagen, nivel = 4, border = cv2.BORDER_DEFAULT):
+
+    Una función que genere una representación en pirámide Gaussiana de 4 niveles de una imagen.
+        Parametros:
+            imagen - Imagen
+            nivel – Indica el nivel de la pirámide
+            border - Tratamiento del borde de la imagen
+
+    p = [imagen]
+    for n in range(nivel):
+        # Aplicamos el alisamiento gaussiano con valores de 5 del kernel y 7 de sigma
+        p.append(cv2.pyrDown(p[-1], borderType = border))
+    return p
+'''
+'''
+def generate_gaussian_pyr_imgs(imagen, niveles = 4, border = cv2.BORDER_DEFAULT , sigma = 0):
+    if sigma > 0:
+        imagen = convolution_c(imagen, sigma=sigma)
+    p = [imagen]
+    for i in range(niveles):
+        p.append(cv2.pyrDown(p[i], borderType=border))
+    return p
+'''
 # Operador de Harris
-def operador_harris(lambda1, lambda2):
+def operador_harris(lambda1, lambda2, threshold):
     '''
     Det(matriz)/Traza(matriz)
     '''
-    return (lambda1*lambda2)/(lambda1+lambda2)
+    res = np.zeros(lambda1.shape)
+    for i in range(lambda1.shape[0]):
+        for j in range (lambda1.shape[1]):
+            if lambda1[i][j] == 0 and lambda2[i][j] == 0:
+                res[i][j] = 0
+            else:
+                res[i][j] = lambda1[i][j]*lambda2[i][j]/(lambda1[i][j]+lambda2[i][j])
+                if res[i][j] <= threshold:
+                    res[i][j] = 0
+    return res
+
 
 # Calcula el centro de la matriz
 def centro_matriz(m):
@@ -96,79 +167,78 @@ def centro_matriz(m):
 # Indica si el centro de la matriz es el máximo de ésta
 def es_maximo_centro(m):
     return centro_matriz(m) == np.max(m)
+'''
+def convolution_d(img, ksize = 3, sigma = 0, border = cv2.BORDER_DEFAULT, dx = 1, dy = 1):
+    img = convolution_c(img, sigma = sigma, own = own)
+    img_x = copy.deepcopy(img)
+    img_y = copy.deepcopy(img)
+    kernel_x = cv2.getDerivKernels(dx, 0, ksize)
+    kernel_y = cv2.getDerivKernels(0, dy, ksize)
+    img_x = convolution_c(img_x, kernel_x[0], kernel_x[1], border = border)
+    img_y = convolution_c(img_y, kernel_y[0], kernel_y[1], border = border)
+    return img_x, img_y
+'''
+def orientacion(u):
+    u = u / sqrt(u[0]*u[0]+u[1]*u[1])
+    if u[1] != 0:
+        theta = math.atan(u[0]/u[1])
+        if u[0]>0 and u[1]<0:
+            theta = math.pi - theta
+        elif u[0]<0 and u[1]<0:
+            theta = math.pi + theta
+        elif u[0]<0 and u[1]>0:
+            theta = 2*math.pi - theta
+    else:
+        if u[0]>0:
+            theta = math.pi/2
+        else:
+            theta = 3/2 * math.pi
 
+    return theta * 180 / math.pi
 
-def supresion_no_maximos(m, threshold, env):
-    """
-    Suprime los valores no-máximos de una matriz (harris). Elimina los puntos
-    que, aunque tengan un valor alto de criterio Harris, no son máximos locales
-    de su entorno (env) para un tamaño de entorno prefijado.
-    Permite la utilización de un umbral (threshold) para eliminar aquellos
-    puntos Harris que se consideren elevados.
-    Devuelve una lista con los keyPoints y su valor correspondiente.
-    """
-    # Se consigue el mínimo valor para rellenar los bordes de la matriz con él
+def get_orientations(img, points, sigma):
+    img_x, img_y = convolution_d(img, sigma = sigma)
+    new_points = np.array([(int(point[0].pt[0]), int(point[0].pt[1])) for point in points])
+    orientations = np.arctan2(img_x, img_y)[new_points[0], new_points[1]]
+    for point, orientation in zip(points, orientations):
+        point[0].angle = orientation/np.pi*180
+    return points
+
+def supresion_no_maximos(m, threshold, win_size):
     min_m = np.min(m)
-    # Se crea una nueva matriz donde se copiarán los puntos harris con un borde
-    # de tamaño env relleno con el valor mínimo de los puntos Harris para que
-    # no entre en conflicto al calcular el máximo local
-    m_bordes = np.ndarray(shape=(m.shape[0]+2*env, m.shape[1]+2*env))
-    m_bordes[:, :] = min_m
-    m_bordes[env:m.shape[0]+env, env:m.shape[1]+env] = m.copy()
-    # Se crea una matriz rellena completamente a 255 con las mismas dimensiones
-    # que la imagen actual
-    m_auxiliar = np.ndarray(shape=(m.shape[0]+2*env, m.shape[1]+2*env))
-    m_auxiliar[:, :] = 255
-    # Los puntos Harris recibidos pueden tener multitud de valores. Si se
-    # quieren obtener los más representativos se deben eliminar los que no
-    # tienen un valor alto. En una zona completamente blanca pueden encontrarse
-    # máximos locales, por lo que aparecerían en la imagen. Para evitar esto,
-    # se indica un umbral, por el que por debajo de él no se tienen en cuenta
-    # esos puntos
 
-    # Lista con las coordenadas de los máximos locales y el valor que tiene
-    # cada uno
+    m_bordes = np.ndarray(shape=(m.shape[0]+2*win_size, m.shape[1]+2*win_size))
+    m_bordes[:, :] = min_m
+    m_bordes[win_size:m.shape[0]+win_size, win_size:m.shape[1]+win_size] = m.copy()
+
+    m_auxiliar = np.ndarray(shape=(m.shape[0]+2*win_size, m.shape[1]+2*win_size))
+    m_auxiliar[:, :] = 255
+
     maximos = []
-    # Se recorre cada posición de la matriz de puntos Harris (se ignora el
-    # borde creado manualmente)
-    for row in range(env, m.shape[0]+env):
-        for col in range(env, m.shape[1]+env):
-            # Si el punto actual tiene valor 255 o si su punto Harris está por
-            # encima del umbral indicado se comprueba si es un máximo local
+    for row in range(win_size, m.shape[0]+win_size):
+        for col in range(win_size, m.shape[1]+win_size):
             if m_auxiliar[row, col] == 255 and m_bordes[row, col]>threshold:
-                # Se obtiene el rango de datos que se deben conseguir para
-                # comprobar que es máximo local, teniendo en cuenta el valor
-                # de env
-                row_insp_init = row - env
-                row_insp_end = row + env
-                col_insp_init = col - env
-                col_insp_end = col + env
-                # Se obtiene la matriz con los datos que rodean al punto actual
-                data = m_bordes[row_insp_init:row_insp_end+1, \
-                                    col_insp_init:col_insp_end+1]
-                # Se comprueba si el punto central es máximo local
+                row_insp_init = row - win_size
+                row_insp_end = row + win_size
+                col_insp_init = col - win_size
+                col_insp_end = col + win_size
+                data = m_bordes[row_insp_init:row_insp_end+1, col_insp_init:col_insp_end+1]
                 if es_maximo_centro(data):
-                    # En caso de ser máximo local, todo el rango de datos
-                    # seleccionados se cambian a 0 para no volver a comprobarlos
-                    m_auxiliar[row_insp_init:row_insp_end+1, \
-                                col_insp_init:col_insp_end+1] = 0
-                    # Se guarda el punto actual real como máximo local
-                    # utilizando la estructura cv2.KeyPoint
-                    maximos.append([cv2.KeyPoint(row-env, col-env, _size=0, \
-                                    _angle=0), m[row-env, col-env]])
-    # Se devuelven las coordenadas de los puntos máximos locales y su valor
+                    m_auxiliar[row_insp_init:row_insp_end+1, col_insp_init:col_insp_end+1] = 0
+                    maximos.append(cv2.KeyPoint(row-win_size, col-win_size, _size=0, _angle=0))
     return maximos
 
 """
 Obtiene una lista potencial de los puntos Harris de una imagen (img).
 Los valores de los parámetros utilizados dependen del sigma que se
 recibe (sigma_block_size, sigma_ksize).
-Recibe (k), (threshol) y (env) utilizados en las funciones creadas para la
+Recibe (k), (threshol) y (win_size) utilizados en las funciones creadas para la
 obtención de los puntos.
 Se puede indicar la escala (scale) para devolver la escala a la que
 pertenecen los puntos generados junto a estos.
 """
-def get_puntos_harris(imagen, block_size = 9, ksize = 7, threshold = -10000, env = 5, scale = -1):
+def get_puntos_harris(imagen, block_size = 9, ksize = 7, threshold = 0.1, win_size = 5, nivel_piramide = 0):
+    imagen = copy.deepcopy(imagen)
     # Se calculan los autovalores y los autovectores de la imagen
     matrizH = cv2.cornerEigenValsAndVecs(imagen, block_size, ksize)
     # Por cada pixel se tienen 6 valores:
@@ -178,38 +248,67 @@ def get_puntos_harris(imagen, block_size = 9, ksize = 7, threshold = -10000, env
     matrizH = cv2.split(matrizH)
     lambda1 = matrizH[0]
     lambda2 = matrizH[1]
+    x1 = matrizH[2]
+    y1 = matrizH[3]
+    x2 = matrizH[4]
+    y2 = matrizH[5]
+
 
     # Calculamos el operador de harris
-    harris = operador_harris(lambda1, lambda2)
-    # Se suprimen los valores no máximos
-    maximos = supresion_no_maximos(harris, threshold, env)
+    harris = operador_harris(lambda1, lambda2, threshold)
 
+    # Se suprimen los valores no máximos
+    maximos = supresion_no_maximos(harris, threshold, win_size)
     # Se añade la escala a cada punto
     for i in range(len(maximos)):
-        maximos[i][0].size = scale
-
+        maximos[i].size = nivel_piramide*block_size
     # Se devuelven los puntos
     return maximos
 
 
+'''
+def show_circles(img, points, radius = 2, color1 = 0, color2 = 255):
+    img = copy.deepcopy(img)
+    for point in points:
+        x = int(point[0].pt[0])
+        y = int(point[0].pt[1])
+        size = int(point[0].size)
+        cv2.circle(img, center=(y, x), radius=size*radius, color=color1, thickness=2)
+    for point in points:
+        pt1 = (int(point[0].pt[1]), int(point[0].pt[0]))
+        pt2 = (int(point[0].pt[1]+np.sin(point[0].angle)*point[0].size*radius), \
+                int(point[0].pt[0]+np.cos(point[0].angle)*point[0].size*radius))
+        cv2.line(img, pt1, pt2, color2)
+    return img
+'''
+
 def apartado1A():
+    # Parametros
     imagen = lee_imagen('imagenes/yosemite/Yosemite1.jpg')
-    piramide = piramide_gaussiana(imagen, niveles = 4)
+    nivel_piramide = 4
+
+    # Realización
+    piramide = piramide_gaussiana(imagen, nivel = nivel_piramide)
     puntos_harris = []
     # Se recorre cada imagen y se le calculan los puntos Harris
     for i, imagen in enumerate(piramide):
-        puntos_harris = puntos_harris + get_harris(imagen, scale = i+1)
+        puntos_harris = puntos_harris + get_puntos_harris(imagen, nivel_piramide = i+1)
+
+     # Se añade la imagen a la lista de imágenes
+    imagen_key = cv2.drawKeypoints(imagen, puntos_harris, np.array([]), color = (0,0,255))
+    pinta_imagen(imagen_key)
+
 
 
 def ej1():
     apartado1A()
-    input("Pulsa enter para continuar")
+    #input("Pulsa enter para continuar")
 
 
 def main():
     print("Ejercicio 1")
     ej1()
-    input("Pulsa enter para continuar")
+    #input("Pulsa enter para continuar")
 
 
 if __name__ == "__main__":
