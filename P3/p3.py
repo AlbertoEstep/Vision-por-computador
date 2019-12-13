@@ -9,6 +9,7 @@ import sys
 import math
 import matplotlib.pyplot as plt
 import copy
+import random
 
 
 ''' FUNCIONES P1 '''
@@ -36,6 +37,19 @@ def pinta_imagen(imagen, titulo = "Titulo"):
     plt.imshow(imagen, cmap = "gray")
     plt.show()
 
+def show_images(imgs, cols = 1, title = ""):
+    plt.rcParams['image.cmap'] = 'gray'
+    imgs_length = len(imgs)
+    rows = 1
+    for i, img in enumerate(imgs):
+        plt.subplot(rows, cols, i+1)
+        plt.title(title)
+        plt.xticks([])
+        plt.yticks([])
+        plt.imshow(img)
+    plt.show()
+
+
 # Calculo de la convolución una máscara arbitraria.
 def convolucion(imagen, kx, ky, border = cv2.BORDER_DEFAULT):
     '''
@@ -60,7 +74,7 @@ def convolucion(imagen, kx, ky, border = cv2.BORDER_DEFAULT):
 # Representación en pirámide Gaussiana de 4 niveles de una imagen.
 def piramide_gaussiana(imagen, nivel = 4, border = cv2.BORDER_DEFAULT):
     p = [imagen]
-    for n in range(nivel):
+    for n in range(nivel-1):
         # Aplicamos el alisamiento gaussiano con valores de 5 del kernel y 7 de sigma
         p.append(cv2.pyrDown(p[-1], borderType = border))
     return p
@@ -69,7 +83,7 @@ def piramide_gaussiana(imagen, nivel = 4, border = cv2.BORDER_DEFAULT):
 
 
 # Operador de Harris
-def operador_harris(lambda1, lambda2, threshold):
+def operador_harris(lambda1, lambda2):
     '''
     Det(matriz)/Traza(matriz)
     '''
@@ -80,15 +94,13 @@ def operador_harris(lambda1, lambda2, threshold):
                 res[i][j] = 0
             else:
                 res[i][j] = lambda1[i][j]*lambda2[i][j]/(lambda1[i][j]+lambda2[i][j])
-                if res[i][j] < threshold:
-                    res[i][j] = 0
     return res
 
 
 # Calcula el centro de la matriz
 def centro_matriz(m):
     # Se calcula el centro de la matriz
-    return m[round(m.shape[0]/2)-1, round(m.shape[0]/2)-1]
+    return m[int(m.shape[0]/2), int(m.shape[1]/2)]
 
 # Indica si el centro de la matriz es el máximo de ésta
 def es_maximo_centro(m):
@@ -132,7 +144,7 @@ def get_orientaciones(imagen, puntos_harris, sigma = 4.5):
 '''
 
 
-def supresion_no_maximos(m, win_size, nivel_piramide):
+def supresion_no_maximos(m, win_size, nivel_piramide, block_size, threshold):
     m_ampliada = np.ndarray(shape=(m.shape[0]+2*win_size, m.shape[1]+2*win_size))
     m_ampliada[:, :] = 0
     m_ampliada[win_size:m.shape[0]+win_size, win_size:m.shape[1]+win_size] = m.copy()
@@ -143,34 +155,50 @@ def supresion_no_maximos(m, win_size, nivel_piramide):
             ffin_win = fila + win_size
             cini_win = columna - win_size
             cfin_win = columna + win_size
-            ventana = m_ampliada[fini_win:ffin_win+1, cini_win:cfin_win+1]
-            if es_maximo_centro(ventana):
-                maximos.append(cv2.KeyPoint((fila-win_size)*(2**nivel_piramide), (columna-win_size)*(2**nivel_piramide), _size=0, _angle=0))
+            windows = m_ampliada[fini_win:ffin_win+1, cini_win:cfin_win+1]
+            if es_maximo_centro(windows) and centro_matriz(windows) >= threshold:
+                maximos.append(cv2.KeyPoint((columna-win_size)*(2**nivel_piramide), (fila-win_size)*(2**nivel_piramide), _size = (nivel_piramide+1)*block_size, _angle=1))
     return maximos
 
 
-def get_puntos_harris(imagen, block_size = 9, ksize = 7, threshold = 0, win_size = 5, nivel_piramide = 0):
+def get_puntos_harris(imagen, block_size = 5, ksize = 3, threshold = 0.15, win_size = 5, nivel_piramide = 1):
     matrizH = cv2.cornerEigenValsAndVecs(imagen, block_size, ksize)
     matrizH = cv2.split(matrizH)
     lambda1 = matrizH[0]
     lambda2 = matrizH[1]
 
-    harris = operador_harris(lambda1, lambda2, threshold)
-    maximos = supresion_no_maximos(harris, win_size, nivel_piramide-1)
-    # Se añade la escala a cada punto
-    for i in range(len(maximos)):
-        maximos[i].size = nivel_piramide*block_size
+    harris = operador_harris(lambda1, lambda2)
+    #harris = non_maximum_supression(harris, win_size)
+    #maximos = get_keypoints(harris, block_size, nivel_piramide-1)
+    maximos = supresion_no_maximos(harris, win_size, nivel_piramide, block_size, threshold)
     return maximos
 
-def pinta_circulos(imagen, puntos_harris, radius = 1, color = 0):
+def pinta_circulos(imagen, puntos_harris, radio = 0.5, color = 0):
     for punto in puntos_harris:
         x = int(punto.pt[0])
         y = int(punto.pt[1])
-        cv2.circle(imagen, center=(y, x), radius=int(punto.size)*radius, color=color, thickness=2)
+        cv2.circle(imagen, center=(x, y), radius=int(punto.size*radio), color=color, thickness=2)
     return imagen
 
+def get_matches_bf_cc(img1, img2, n = 100, flag = 2):
+    # Se obtienen los keypoints y los descriptores de las dos imágenes
+    akaze = cv2.AKAZE_create()
+    kpts1, desc1 = akaze.detectAndCompute(img1, None)
+    kpts2, desc2 = akaze.detectAndCompute(img2, None)
+    bf = cv2.BFMatcher(crossCheck = True)
+    matches = bf.match(desc1, desc2)
 
-def apartado1A():
+
+    # Se ordenan los matches dependiendo de la distancia entre ambos puntos
+    # guardando solo los n mejores.
+    #matches = sorted(matches, key = lambda x:x.distance)[0:n]
+    matches = random.sample(matches, n)
+
+    # Se crea la imagen que se compone de ambas imágenes con los matches
+    # generados.
+    return cv2.drawMatches(img1, kpts1, img2, kpts2, matches, None, flags = flag)
+
+def apartado1AB():
     # Parametros
     imagen = lee_imagen('imagenes/yosemite/Yosemite1.jpg')
     nivel_piramide = 4
@@ -178,21 +206,33 @@ def apartado1A():
     # Realización
     piramide = piramide_gaussiana(imagen, nivel = nivel_piramide)
     puntos_harris = []
+    puntos = []
     # Se recorre cada imagen y se le calculan los puntos Harris
     for i, img in enumerate(piramide):
-        puntos_harris += get_puntos_harris(img, nivel_piramide = i+1)
+        puntos = get_puntos_harris(img, block_size = 5, ksize = 5, threshold = 0.01, win_size = 5, nivel_piramide = i)
+        puntos_harris += puntos
+        print("Numero de puntos harris encontrados en la octava " + str(i+1) + ": " + str(len(puntos)))
+        imagen_key = cv2.drawKeypoints(imagen, puntos, np.array([]), color = (0,0,255), flags = 4)
+        #imagen_key = pinta_circulos(imagen, puntos_harris)
+        pinta_imagen(imagen_key)
 
+    print("Numero de puntos harris encontrados en total: " + str(len(puntos_harris)))
      # Se añade la imagen a la lista de imágenes
-    #imagen_key = cv2.drawKeypoints(imagen, puntos_harris, np.array([]), color = (0,0,255))
-    imagen_key = pinta_circulos(imagen, puntos_harris)
+    imagen_key = cv2.drawKeypoints(imagen, puntos_harris, np.array([]), color = (0,0,255), flags = 4)
+    #imagen_key = pinta_circulos(imagen, puntos_harris)
     pinta_imagen(imagen_key)
-
 
 def apartado2A():
     # Parametros
     imagen1 = lee_imagen('imagenes/Tablero1.jpg')
-    imagen2 = lee_imagen('imagenes/Tablero2.jpg')
+    imagen1 = lee_imagen('imagenes/Tablero2.jpg')
 
+    # Realización
+    imagenes = []
+    imagenes.append(get_matches_bf_cc(imagen1, imagen1))
+    show_images(imagenes, cols = 1)
+
+'''
     # Realización
     akaze = cv2.AKAZE_create()
     kpts1, desc1 = akaze.detectAndCompute(imagen1, None)
@@ -234,18 +274,19 @@ def apartado2A():
     print('# Inliers Ratio:                      \t', inlier_ratio)
     cv2.imshow('result', res)
     pinta_imagen(imagen_matches)
-
+'''
 def ej1():
-    apartado1A()
+    print("Ejercicio 1")
+    apartado1AB()
     #input("Pulsa enter para continuar")
 
+
 def ej2():
+    print("Ejercicio 2")
     apartado2A()
 
 def main():
-    print("Ejercicio 1")
     #ej1()
-    #input("Pulsa enter para continuar")
     ej2()
 
 
