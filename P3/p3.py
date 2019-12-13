@@ -10,6 +10,9 @@ import math
 import matplotlib.pyplot as plt
 import copy
 
+
+''' FUNCIONES P1 '''
+
 # Funcion para leer las imagenes de la P1
 def lee_imagen(file_name):
     imagen = cv2.imread(file_name, 0)
@@ -39,8 +42,8 @@ def convolucion(imagen, kx, ky, border = cv2.BORDER_DEFAULT):
     Calculo de la convolución una máscara arbitraria.
         Parametros:
             imagen - Imagen
-            kx: kernel del eje x.
-            ky: kernel del eje y.
+            kx -
+            ky -
             border - Tratamiento del borde de la imagen
     '''
     # Transponemos el vertor del eje x (para que al multiplicarlo con el vertor del eje y nos resulte una matriz)
@@ -51,97 +54,20 @@ def convolucion(imagen, kx, ky, border = cv2.BORDER_DEFAULT):
     # Convoluciona una imagen con el núcleo
     imagen = cv2.filter2D(imagen, -1, kx, borderType = border)
     imagen = cv2.filter2D(imagen, -1, ky, borderType = border)
-    return imagen
-
-'''
-def convolution_c(img, sigma = 0, border = cv2.BORDER_DEFAULT):
-    img = copy.deepcopy(img)
-    kernel_x = cv2.getGaussianKernel(6*sigma+1, sigma)
-    kernel_y = kernel_x
-    if(len(img.shape) == 2):
-        rows, cols = img.shape
-    else:
-        sys.exit("Imagen no valida")
-
-    for i in range(rows):
-        convolucion = cv2.filter2D(img[i, :], -1, kernel_x, borderType=border)
-        img[i, :] = [sublist[0] for sublist in convolucion]
-
-    for i in range(cols):
-        convolucion = cv2.filter2D(img[:, i], -1, kernel_y, borderType=border)
-        img[:, i] = [sublist[0] for sublist in convolucion]
-
-    cv2.normalize(img, img, 0, 255, cv2.NORM_MINMAX)
-
-    return img
-'''
-
-# El cálculo de la convolución de una imagen con una máscara 2D.
-def gaussian_blur(imagen, kx = 0, ky = 0, sigmax = 0, sigmay = 0, border = cv2.BORDER_DEFAULT):
-    '''
-    El cálculo de la convolución de una imagen con una máscara 2D.
-        Parametros:
-            imagen - Imagen
-            kx - Tamaño de la abertura en el eje x, debe ser impar y positivo.
-            ky - Tamaño de la abertura en el eje y, debe ser impar y positivo.
-            sigmax – Desviación estándar gaussiana en el eje x.
-            sigmay – Desviación estándar gaussiana en el eje y.
-            border - Tratamiento del borde de la imagen
-    '''
-    # Calculamos el tamaño de la mascara optimo si el usuario introdujo el valor 0
-    if kx == 0:
-        # 6 veces el valor del sigma es el tamaño optimo para el tamaño de la abertura, mas 1 para conseguir la imparidad
-        kx = int(6*sigmax) + 1
-    if ky == 0:
-        ky = int(6*sigmay) + 1
-    # La función getGaussianKernel calcula y devuelve la matriz de coeficientes de filtro gaussianos
-    kernelX = cv2.getGaussianKernel(kx, sigmax)
-    kernelY = cv2.getGaussianKernel(ky, sigmay)
-    # Hacemos la convolucion
-    imagen = convolucion(imagen, kernelX, kernelY, border)
+    imagen = normaliza(imagen)
     return imagen
 
 # Representación en pirámide Gaussiana de 4 niveles de una imagen.
 def piramide_gaussiana(imagen, nivel = 4, border = cv2.BORDER_DEFAULT):
-    '''
-    Una función que genere una representación en pirámide Gaussiana de 4 niveles de una imagen.
-        Parametros:
-            imagen - Imagen
-            nivel – Indica el nivel de la pirámide
-            border - Tratamiento del borde de la imagen
-    '''
-    p = [imagen]
-    copia = np.copy(imagen)
-    for n in range(nivel):
-        # Aplicamos el alisamiento gaussiano con valores de 5 del kernel y 7 de sigma
-        copia = gaussian_blur(copia, 3, 3, 7, 7, border = border)
-        p.append(cv2.pyrDown(copia, borderType = border))
-    return p
-
-'''
-def piramide_gaussiana(imagen, nivel = 4, border = cv2.BORDER_DEFAULT):
-
-    Una función que genere una representación en pirámide Gaussiana de 4 niveles de una imagen.
-        Parametros:
-            imagen - Imagen
-            nivel – Indica el nivel de la pirámide
-            border - Tratamiento del borde de la imagen
-
     p = [imagen]
     for n in range(nivel):
         # Aplicamos el alisamiento gaussiano con valores de 5 del kernel y 7 de sigma
         p.append(cv2.pyrDown(p[-1], borderType = border))
     return p
-'''
-'''
-def generate_gaussian_pyr_imgs(imagen, niveles = 4, border = cv2.BORDER_DEFAULT , sigma = 0):
-    if sigma > 0:
-        imagen = convolution_c(imagen, sigma=sigma)
-    p = [imagen]
-    for i in range(niveles):
-        p.append(cv2.pyrDown(p[i], borderType=border))
-    return p
-'''
+
+''' ***************************************************************************************** '''
+
+
 # Operador de Harris
 def operador_harris(lambda1, lambda2, threshold):
     '''
@@ -154,7 +80,7 @@ def operador_harris(lambda1, lambda2, threshold):
                 res[i][j] = 0
             else:
                 res[i][j] = lambda1[i][j]*lambda2[i][j]/(lambda1[i][j]+lambda2[i][j])
-                if res[i][j] <= threshold:
+                if res[i][j] < threshold:
                     res[i][j] = 0
     return res
 
@@ -167,120 +93,82 @@ def centro_matriz(m):
 # Indica si el centro de la matriz es el máximo de ésta
 def es_maximo_centro(m):
     return centro_matriz(m) == np.max(m)
-'''
-def convolution_d(img, ksize = 3, sigma = 0, border = cv2.BORDER_DEFAULT, dx = 1, dy = 1):
-    img = convolution_c(img, sigma = sigma, own = own)
-    img_x = copy.deepcopy(img)
-    img_y = copy.deepcopy(img)
-    kernel_x = cv2.getDerivKernels(dx, 0, ksize)
-    kernel_y = cv2.getDerivKernels(0, dy, ksize)
-    img_x = convolution_c(img_x, kernel_x[0], kernel_x[1], border = border)
-    img_y = convolution_c(img_y, kernel_y[0], kernel_y[1], border = border)
-    return img_x, img_y
-'''
-def orientacion(u):
-    u = u / sqrt(u[0]*u[0]+u[1]*u[1])
-    if u[1] != 0:
-        theta = math.atan(u[0]/u[1])
-        if u[0]>0 and u[1]<0:
-            theta = math.pi - theta
-        elif u[0]<0 and u[1]<0:
-            theta = math.pi + theta
-        elif u[0]<0 and u[1]>0:
-            theta = 2*math.pi - theta
-    else:
-        if u[0]>0:
-            theta = math.pi/2
-        else:
-            theta = 3/2 * math.pi
 
+
+def derivadas(imagen, ksize = 3, sigma = 0, border = cv2.BORDER_DEFAULT):
+    imagen = convolution(imagen, sigma = sigma)
+    kx = cv2.getDerivKernels(1, 0, ksize)
+    ky = cv2.getDerivKernels(0, 1, ksize)
+    dx = convolucion(imagen, kx[0], kx[1], border = border)
+    dy = convolucion(imagen, ky[0], ky[1], border = border)
+    return dx, dy
+
+
+def orientacion(u):
+    if u[0] == 0 and u[1] == 0:
+        return 0
+    else:
+        u = u / sqrt(u[0]*u[0]+u[1]*u[1])
+        if u[1] != 0:
+            theta = math.atan(u[0]/u[1])
+            if u[0]>0 and u[1]<0:
+                theta = math.pi - theta
+            elif u[0]<0 and u[1]<0:
+                theta = math.pi + theta
+            elif u[0]<0 and u[1]>0:
+                theta = 2*math.pi - theta
+        else:
+            if u[0]>0:
+                theta = math.pi/2
+            else:
+                theta = 3/2 * math.pi
     return theta * 180 / math.pi
 
-def get_orientations(img, points, sigma):
-    img_x, img_y = convolution_d(img, sigma = sigma)
-    new_points = np.array([(int(point[0].pt[0]), int(point[0].pt[1])) for point in points])
-    orientations = np.arctan2(img_x, img_y)[new_points[0], new_points[1]]
-    for point, orientation in zip(points, orientations):
-        point[0].angle = orientation/np.pi*180
-    return points
+'''
+def get_orientaciones(imagen, puntos_harris, sigma = 4.5):
+    dx, dy = derivadas(imagen, sigma = sigma)
+    NO SE QUE HACER
+    return puntos_harris
+'''
 
-def supresion_no_maximos(m, threshold, win_size):
-    min_m = np.min(m)
 
-    m_bordes = np.ndarray(shape=(m.shape[0]+2*win_size, m.shape[1]+2*win_size))
-    m_bordes[:, :] = min_m
-    m_bordes[win_size:m.shape[0]+win_size, win_size:m.shape[1]+win_size] = m.copy()
-
-    m_auxiliar = np.ndarray(shape=(m.shape[0]+2*win_size, m.shape[1]+2*win_size))
-    m_auxiliar[:, :] = 255
-
+def supresion_no_maximos(m, win_size, nivel_piramide):
+    m_ampliada = np.ndarray(shape=(m.shape[0]+2*win_size, m.shape[1]+2*win_size))
+    m_ampliada[:, :] = 0
+    m_ampliada[win_size:m.shape[0]+win_size, win_size:m.shape[1]+win_size] = m.copy()
     maximos = []
-    for row in range(win_size, m.shape[0]+win_size):
-        for col in range(win_size, m.shape[1]+win_size):
-            if m_auxiliar[row, col] == 255 and m_bordes[row, col]>threshold:
-                row_insp_init = row - win_size
-                row_insp_end = row + win_size
-                col_insp_init = col - win_size
-                col_insp_end = col + win_size
-                data = m_bordes[row_insp_init:row_insp_end+1, col_insp_init:col_insp_end+1]
-                if es_maximo_centro(data):
-                    m_auxiliar[row_insp_init:row_insp_end+1, col_insp_init:col_insp_end+1] = 0
-                    maximos.append(cv2.KeyPoint(row-win_size, col-win_size, _size=0, _angle=0))
+    for fila in range(win_size, m.shape[0]+win_size):
+        for columna in range(win_size, m.shape[1]+win_size):
+            fini_win = fila - win_size
+            ffin_win = fila + win_size
+            cini_win = columna - win_size
+            cfin_win = columna + win_size
+            ventana = m_ampliada[fini_win:ffin_win+1, cini_win:cfin_win+1]
+            if es_maximo_centro(ventana):
+                maximos.append(cv2.KeyPoint((fila-win_size)*(2**nivel_piramide), (columna-win_size)*(2**nivel_piramide), _size=0, _angle=0))
     return maximos
 
-"""
-Obtiene una lista potencial de los puntos Harris de una imagen (img).
-Los valores de los parámetros utilizados dependen del sigma que se
-recibe (sigma_block_size, sigma_ksize).
-Recibe (k), (threshol) y (win_size) utilizados en las funciones creadas para la
-obtención de los puntos.
-Se puede indicar la escala (scale) para devolver la escala a la que
-pertenecen los puntos generados junto a estos.
-"""
-def get_puntos_harris(imagen, block_size = 9, ksize = 7, threshold = 0.1, win_size = 5, nivel_piramide = 0):
-    imagen = copy.deepcopy(imagen)
-    # Se calculan los autovalores y los autovectores de la imagen
+
+def get_puntos_harris(imagen, block_size = 9, ksize = 7, threshold = 0, win_size = 5, nivel_piramide = 0):
     matrizH = cv2.cornerEigenValsAndVecs(imagen, block_size, ksize)
-    # Por cada pixel se tienen 6 valores:
-    # - lambda11, lambda2: autovalores
-    # - x1, y1: autovalores correspondientes a lambda1
-    # - x2, y2: autovalores correspondientes a lambda2
     matrizH = cv2.split(matrizH)
     lambda1 = matrizH[0]
     lambda2 = matrizH[1]
-    x1 = matrizH[2]
-    y1 = matrizH[3]
-    x2 = matrizH[4]
-    y2 = matrizH[5]
 
-
-    # Calculamos el operador de harris
     harris = operador_harris(lambda1, lambda2, threshold)
-
-    # Se suprimen los valores no máximos
-    maximos = supresion_no_maximos(harris, threshold, win_size)
+    maximos = supresion_no_maximos(harris, win_size, nivel_piramide-1)
     # Se añade la escala a cada punto
     for i in range(len(maximos)):
         maximos[i].size = nivel_piramide*block_size
-    # Se devuelven los puntos
     return maximos
 
+def pinta_circulos(imagen, puntos_harris, radius = 1, color = 0):
+    for punto in puntos_harris:
+        x = int(punto.pt[0])
+        y = int(punto.pt[1])
+        cv2.circle(imagen, center=(y, x), radius=int(punto.size)*radius, color=color, thickness=2)
+    return imagen
 
-'''
-def show_circles(img, points, radius = 2, color1 = 0, color2 = 255):
-    img = copy.deepcopy(img)
-    for point in points:
-        x = int(point[0].pt[0])
-        y = int(point[0].pt[1])
-        size = int(point[0].size)
-        cv2.circle(img, center=(y, x), radius=size*radius, color=color1, thickness=2)
-    for point in points:
-        pt1 = (int(point[0].pt[1]), int(point[0].pt[0]))
-        pt2 = (int(point[0].pt[1]+np.sin(point[0].angle)*point[0].size*radius), \
-                int(point[0].pt[0]+np.cos(point[0].angle)*point[0].size*radius))
-        cv2.line(img, pt1, pt2, color2)
-    return img
-'''
 
 def apartado1A():
     # Parametros
@@ -291,24 +179,75 @@ def apartado1A():
     piramide = piramide_gaussiana(imagen, nivel = nivel_piramide)
     puntos_harris = []
     # Se recorre cada imagen y se le calculan los puntos Harris
-    for i, imagen in enumerate(piramide):
-        puntos_harris = puntos_harris + get_puntos_harris(imagen, nivel_piramide = i+1)
+    for i, img in enumerate(piramide):
+        puntos_harris += get_puntos_harris(img, nivel_piramide = i+1)
 
      # Se añade la imagen a la lista de imágenes
-    imagen_key = cv2.drawKeypoints(imagen, puntos_harris, np.array([]), color = (0,0,255))
+    #imagen_key = cv2.drawKeypoints(imagen, puntos_harris, np.array([]), color = (0,0,255))
+    imagen_key = pinta_circulos(imagen, puntos_harris)
     pinta_imagen(imagen_key)
 
 
+def apartado2A():
+    # Parametros
+    imagen1 = lee_imagen('imagenes/Tablero1.jpg')
+    imagen2 = lee_imagen('imagenes/Tablero2.jpg')
+
+    # Realización
+    akaze = cv2.AKAZE_create()
+    kpts1, desc1 = akaze.detectAndCompute(imagen1, None)
+    kpts2, desc2 = akaze.detectAndCompute(imagen2, None)
+    matcher = cv2.DescriptorMatcher_create(cv2.DescriptorMatcher_BRUTEFORCE_HAMMING)
+    nn_matches = matcher.knnMatch(desc1, desc2, 2)
+    matched1 = []
+    matched2 = []
+    nn_match_ratio = 0.8 # Nearest neighbor matching ratio
+    for m, n in nn_matches:
+        if m.distance < nn_match_ratio * n.distance:
+            matched1.append(kpts1[m.queryIdx])
+            matched2.append(kpts2[m.trainIdx])
+    inliers1 = []
+    inliers2 = []
+    good_matches = []
+    inlier_threshold = 2.5 # Distance threshold to identify inliers with homography check
+    for i, m in enumerate(matched1):
+        col = np.ones((3,1), dtype=np.float64)
+        col[0:2,0] = m.pt
+        #col = np.dot(homography, col)
+        col /= col[2,0]
+        dist = math.sqrt(pow(col[0,0] - matched2[i].pt[0], 2) +\
+                    pow(col[1,0] - matched2[i].pt[1], 2))
+        if dist < inlier_threshold:
+            good_matches.append(cv2.DMatch(len(inliers1), len(inliers2), 0))
+            inliers1.append(matched1[i])
+            inliers2.append(matched2[i])
+    res = np.empty((max(imagen1.shape[0], imagen2.shape[0]), imagen1.shape[1]+imagen2.shape[1], 3), dtype=np.uint8)
+    imagen_matches = cv2.drawMatches(imagen1, inliers1, imagen2, inliers2, good_matches, None, flags = 0)
+    cv2.imwrite("akaze_result.png", res)
+    inlier_ratio = len(inliers1) / float(len(matched1))
+    print('A-KAZE Matching Results')
+    print('*******************************')
+    print('# Keypoints 1:                        \t', len(kpts1))
+    print('# Keypoints 2:                        \t', len(kpts2))
+    print('# Matches:                            \t', len(matched1))
+    print('# Inliers:                            \t', len(inliers1))
+    print('# Inliers Ratio:                      \t', inlier_ratio)
+    cv2.imshow('result', res)
+    pinta_imagen(imagen_matches)
 
 def ej1():
     apartado1A()
     #input("Pulsa enter para continuar")
 
+def ej2():
+    apartado2A()
 
 def main():
     print("Ejercicio 1")
-    ej1()
+    #ej1()
     #input("Pulsa enter para continuar")
+    ej2()
+
 
 
 if __name__ == "__main__":
