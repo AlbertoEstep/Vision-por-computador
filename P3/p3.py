@@ -186,17 +186,55 @@ def get_matches_bf_cc(img1, img2, n = 100, flag = 2):
     kpts1, desc1 = akaze.detectAndCompute(img1, None)
     kpts2, desc2 = akaze.detectAndCompute(img2, None)
     bf = cv2.BFMatcher(crossCheck = True)
-    matches = bf.match(desc1, desc2)
+    matches1to2 = bf.match(desc1, desc2)
+    matches2to1 = bf.match(desc2, desc1)
+    matches = []
+    '''
+    print(len(matches1to2))
+    print(len(matches2to1))
+    if len(matches1to2) < len(matches2to1):
+        for i in range(len(matches1to2)):
+            if matches1to2[i] in matches2to1:
+                matches.append(matches1to2[i])
+    else:
+        for i in range(len(matches2to1)):
+            if matches2to1[i] in matches1to2:
+                matches.append(matches2to1[i])
 
+    print(matches1to2[1])
+    '''
+    #matches1to2 = sorted(matches1to2, key = lambda x:x.distance)[0:n]
+    #matches = random.sample(matches, n)
+    return cv2.drawMatches(img1, kpts1, img2, kpts2, matches, None, flags = flag)
 
+def get_matches_knn(img1, img2, k = 2, ratio = 0.8, n = 100, flag = 2):
+    # Se obtienen los keypoints y los descriptores de las dos imágenes
+    akaze = cv2.AKAZE_create()
+    kpts1, desc1 = akaze.detectAndCompute(img1, None)
+    kpts2, desc2 = akaze.detectAndCompute(img2, None)
+    # Se crea el objeto BFMatcher de OpenCV
+    bf = cv2.BFMatcher()
+    # Se consiguen los puntos con los que hace match indicando los vecinos más
+    # cercanos con los que se hace la comprobación
+    matches = bf.knnMatch(desc1, desc2, k)
+    # Solo se hace para hacer una mejora de los matches
+    # Se guardan los puntos que cumplan con un radio en concreto
+    good = []
+    # Se recorren todos los matches
+    for p1, p2 in matches:
+        # Si la distancia del punto de la primera imagen es menor que la
+        # distancia del segundo punto aplicándole un ratio, el punto se
+        # considera bueno
+        if p1.distance < ratio*p2.distance:
+            good.append([p1])
     # Se ordenan los matches dependiendo de la distancia entre ambos puntos
-    # guardando solo los n mejores.
-    #matches = sorted(matches, key = lambda x:x.distance)[0:n]
+    # guardando solo los n mejores
+    matches = sorted(good, key = lambda x:x[0].distance)
+    # Se guardan solo algunos puntos (n) aleatorios
     matches = random.sample(matches, n)
-
     # Se crea la imagen que se compone de ambas imágenes con los matches
     # generados.
-    return cv2.drawMatches(img1, kpts1, img2, kpts2, matches, None, flags = flag)
+    return cv2.drawMatchesKnn(img1, kpts1, img2, kpts2, matches, None, flags = flag)
 
 def apartado1AB():
     # Parametros
@@ -224,12 +262,22 @@ def apartado1AB():
 
 def apartado2A():
     # Parametros
-    imagen1 = lee_imagen('imagenes/Tablero1.jpg')
-    imagen1 = lee_imagen('imagenes/Tablero2.jpg')
+    imagen1 = lee_imagen('imagenes/yosemite/Yosemite1.jpg')
+    imagen2 = lee_imagen('imagenes/yosemite/Yosemite2.jpg')
 
     # Realización
     imagenes = []
-    imagenes.append(get_matches_bf_cc(imagen1, imagen1))
+    imagenes.append(get_matches_bf_cc(imagen1, imagen2))
+    show_images(imagenes, cols = 1)
+
+def apartado2B():
+    # Parametros
+    imagen1 = lee_imagen('imagenes/yosemite/Yosemite1.jpg')
+    imagen2 = lee_imagen('imagenes/yosemite/Yosemite2.jpg')
+
+    # Realización
+    imagenes = []
+    imagenes.append(get_matches_knn(imagen1, imagen2))
     show_images(imagenes, cols = 1)
 
 '''
@@ -284,6 +332,8 @@ def ej1():
 def ej2():
     print("Ejercicio 2")
     apartado2A()
+    input("Pulsa enter para continuar")
+    apartado2B()
 
 def main():
     #ej1()
