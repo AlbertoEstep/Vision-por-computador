@@ -17,6 +17,7 @@ import random
 # Funcion para leer las imagenes de la P1
 def lee_imagen(file_name):
     imagen = cv2.imread(file_name, 0)
+    imagen = imagen.astype(np.float32)
     return imagen
 
 # Normalizamos la matriz
@@ -31,7 +32,6 @@ def normaliza(imagen):
 
 # Mostramos la imagen
 def pinta_imagen(imagen, titulo = "Titulo"):
-    imagen = normaliza(imagen)
     imagen = imagen.astype(np.uint8)
     plt.figure(0).canvas.set_window_title(titulo)
     plt.imshow(imagen, cmap = "gray")
@@ -68,8 +68,18 @@ def convolucion(imagen, kx, ky, border = cv2.BORDER_DEFAULT):
     # Convoluciona una imagen con el núcleo
     imagen = cv2.filter2D(imagen, -1, kx, borderType = border)
     imagen = cv2.filter2D(imagen, -1, ky, borderType = border)
-    imagen = normaliza(imagen)
     return imagen
+
+def gaussian_blur(imagen, kx = 0, ky = 0, sigmax = 0, sigmay = 0, border = cv2.BORDER_DEFAULT):
+    if kx == 0:
+        kx = int(6*sigmax) + 1
+    if ky == 0:
+        ky = int(6*sigmay) + 1
+    kernelX = cv2.getGaussianKernel(kx, sigmax)
+    kernelY = cv2.getGaussianKernel(ky, sigmay)
+    imagen = convolucion(imagen, kernelX, kernelY, border)
+    return imagen
+
 
 # Representación en pirámide Gaussiana de 4 niveles de una imagen.
 def piramide_gaussiana(imagen, nivel = 4, border = cv2.BORDER_DEFAULT):
@@ -78,6 +88,14 @@ def piramide_gaussiana(imagen, nivel = 4, border = cv2.BORDER_DEFAULT):
         # Aplicamos el alisamiento gaussiano con valores de 5 del kernel y 7 de sigma
         p.append(cv2.pyrDown(p[-1], borderType = border))
     return p
+
+def derivadas(imagen, ksize = 3, sigma = 0, border = cv2.BORDER_DEFAULT):
+    imagen = gaussian_blur(imagen, kx = ksize, ky = ksize, sigmax = sigma, sigmay = sigma)
+    kx = cv2.getDerivKernels(1, 0, ksize)
+    ky = cv2.getDerivKernels(0, 1, ksize)
+    dx = convolucion(imagen, kx[0], kx[1], border = border)
+    dy = convolucion(imagen, ky[0], ky[1], border = border)
+    return dx, dy
 
 ''' ***************************************************************************************** '''
 
@@ -90,7 +108,7 @@ def operador_harris(lambda1, lambda2):
     res = np.zeros(lambda1.shape)
     for i in range(lambda1.shape[0]):
         for j in range (lambda1.shape[1]):
-            if lambda1[i][j] == 0 and lambda2[i][j] == 0:
+            if lambda1[i][j]+lambda2[i][j] == 0:
                 res[i][j] = 0
             else:
                 res[i][j] = lambda1[i][j]*lambda2[i][j]/(lambda1[i][j]+lambda2[i][j])
@@ -106,49 +124,27 @@ def centro_matriz(m):
 def es_maximo_centro(m):
     return centro_matriz(m) == np.max(m)
 
+def orientacion(u1, u2):
+    # Normalizamos el vector
+    l2_norm = math.sqrt(u1*u1+u2*u2)
+    if (l2_norm != 0 ):
+        u1 = u1 / l2_norm
+        u2 = u2 / l2_norm
 
-def derivadas(imagen, ksize = 3, sigma = 0, border = cv2.BORDER_DEFAULT):
-    imagen = convolution(imagen, sigma = sigma)
-    kx = cv2.getDerivKernels(1, 0, ksize)
-    ky = cv2.getDerivKernels(0, 1, ksize)
-    dx = convolucion(imagen, kx[0], kx[1], border = border)
-    dy = convolucion(imagen, ky[0], ky[1], border = border)
-    return dx, dy
-
-
-def orientacion(u):
-    if u[0] == 0 and u[1] == 0:
-        return 0
+        theta = math.atan2(u2, u1) * 180 / math.pi
+        if theta < 0:
+            theta += 360
     else:
-        u = u / sqrt(u[0]*u[0]+u[1]*u[1])
-        if u[1] != 0:
-            theta = math.atan(u[0]/u[1])
-            if u[0]>0 and u[1]<0:
-                theta = math.pi - theta
-            elif u[0]<0 and u[1]<0:
-                theta = math.pi + theta
-            elif u[0]<0 and u[1]>0:
-                theta = 2*math.pi - theta
-        else:
-            if u[0]>0:
-                theta = math.pi/2
-            else:
-                theta = 3/2 * math.pi
-    return theta * 180 / math.pi
+        theta = 0
+    # Devolvemos en grados
+    return theta
 
-'''
-def get_orientaciones(imagen, puntos_harris, sigma = 4.5):
-    dx, dy = derivadas(imagen, sigma = sigma)
-    NO SE QUE HACER
-    return puntos_harris
-'''
-
-
-def supresion_no_maximos(m, win_size, nivel_piramide, block_size, threshold):
+def supresion_no_maximos(imagen, dx, dy, m, win_size, nivel_piramide, block_size, threshold):
     m_ampliada = np.ndarray(shape=(m.shape[0]+2*win_size, m.shape[1]+2*win_size))
     m_ampliada[:, :] = 0
     m_ampliada[win_size:m.shape[0]+win_size, win_size:m.shape[1]+win_size] = m.copy()
     maximos = []
+
     for fila in range(win_size, m.shape[0]+win_size):
         for columna in range(win_size, m.shape[1]+win_size):
             fini_win = fila - win_size
@@ -157,97 +153,97 @@ def supresion_no_maximos(m, win_size, nivel_piramide, block_size, threshold):
             cfin_win = columna + win_size
             windows = m_ampliada[fini_win:ffin_win+1, cini_win:cfin_win+1]
             if es_maximo_centro(windows) and centro_matriz(windows) >= threshold:
-                maximos.append(cv2.KeyPoint((columna-win_size)*(2**nivel_piramide), (fila-win_size)*(2**nivel_piramide), _size = (nivel_piramide+1)*block_size, _angle=1))
+                c = columna - win_size
+                f = fila - win_size
+                print ("(u0:" + str(dx[f, c]) + ", u1: " + str(dy[f, c]) + ")" )
+                maximos.append(cv2.KeyPoint(c*(2**nivel_piramide), f*(2**nivel_piramide), _size = (nivel_piramide+1)*block_size, _angle=orientacion(dx[f, c], dy[f, c])))
     return maximos
 
 
-def get_puntos_harris(imagen, block_size = 5, ksize = 3, threshold = 0.15, win_size = 5, nivel_piramide = 1):
+def get_puntos_harris(imagen, dx, dy, block_size = 5, ksize = 3, threshold = 10, win_size = 5, nivel_piramide = 1):
     matrizH = cv2.cornerEigenValsAndVecs(imagen, block_size, ksize)
     matrizH = cv2.split(matrizH)
     lambda1 = matrizH[0]
     lambda2 = matrizH[1]
 
     harris = operador_harris(lambda1, lambda2)
-    #harris = non_maximum_supression(harris, win_size)
-    #maximos = get_keypoints(harris, block_size, nivel_piramide-1)
-    maximos = supresion_no_maximos(harris, win_size, nivel_piramide, block_size, threshold)
+    maximos = supresion_no_maximos(imagen, dx, dy, harris, win_size, nivel_piramide, block_size, threshold)
     return maximos
 
-def pinta_circulos(imagen, puntos_harris, radio = 0.5, color = 0):
-    for punto in puntos_harris:
-        x = int(punto.pt[0])
-        y = int(punto.pt[1])
-        cv2.circle(imagen, center=(x, y), radius=int(punto.size*radio), color=color, thickness=2)
-    return imagen
 
-def get_matches_bf_cc(img1, img2, n = 100, flag = 2):
+def get_matches_bf_cc(imagen1, imagen2, n = 100, flag = 2):
     # Se obtienen los keypoints y los descriptores de las dos imágenes
     akaze = cv2.AKAZE_create()
-    kpts1, desc1 = akaze.detectAndCompute(img1, None)
-    kpts2, desc2 = akaze.detectAndCompute(img2, None)
+    kpts1, desc1 = akaze.detectAndCompute(imagen1, None)
+    kpts2, desc2 = akaze.detectAndCompute(imagen2, None)
     bf = cv2.BFMatcher(crossCheck = True)
+    matches = bf.match(desc1, desc2)
+    ''' SI NO SE PUEDE USAR CROSSCHECK = TRUE
+    matches = []
     matches1to2 = bf.match(desc1, desc2)
     matches2to1 = bf.match(desc2, desc1)
-    matches = []
-    '''
-    print(len(matches1to2))
-    print(len(matches2to1))
+
+
+    queryIdx = []
+    trainIdx = []
+
+
+    for i in range(len(matches1to2)):
+        queryIdx.append(matches1to2[i].queryIdx)
+    for i in range(len(matches2to1)):
+        trainIdx.append(matches2to1[i].queryIdx)
+
     if len(matches1to2) < len(matches2to1):
         for i in range(len(matches1to2)):
-            if matches1to2[i] in matches2to1:
+            if matches1to2[i].queryIdx in trainIdx:
                 matches.append(matches1to2[i])
     else:
         for i in range(len(matches2to1)):
-            if matches2to1[i] in matches1to2:
+            if matches2to1[i].queryIdx in queryIdx:
                 matches.append(matches2to1[i])
-
-    print(matches1to2[1])
     '''
-    #matches1to2 = sorted(matches1to2, key = lambda x:x.distance)[0:n]
-    #matches = random.sample(matches, n)
-    return cv2.drawMatches(img1, kpts1, img2, kpts2, matches, None, flags = flag)
 
-def get_matches_knn(img1, img2, k = 2, ratio = 0.8, n = 100, flag = 2):
-    # Se obtienen los keypoints y los descriptores de las dos imágenes
+    #matches = sorted(matches, key = lambda x:x.distance)[0:n]
+    matches = random.sample(matches, n)
+    return cv2.drawMatches(imagen1, kpts1, imagen2, kpts2, matches, None, flags = flag)
+
+
+def get_matches_knn(imagen1, imagen2, k = 2, ratio = 0.8, n = 100, flag = 2):
     akaze = cv2.AKAZE_create()
-    kpts1, desc1 = akaze.detectAndCompute(img1, None)
-    kpts2, desc2 = akaze.detectAndCompute(img2, None)
-    # Se crea el objeto BFMatcher de OpenCV
+    kpts1, desc1 = akaze.detectAndCompute(imagen1, None)
+    kpts2, desc2 = akaze.detectAndCompute(imagen2, None)
     bf = cv2.BFMatcher()
-    # Se consiguen los puntos con los que hace match indicando los vecinos más
-    # cercanos con los que se hace la comprobación
     matches = bf.knnMatch(desc1, desc2, k)
-    # Solo se hace para hacer una mejora de los matches
-    # Se guardan los puntos que cumplan con un radio en concreto
     good = []
-    # Se recorren todos los matches
     for p1, p2 in matches:
-        # Si la distancia del punto de la primera imagen es menor que la
-        # distancia del segundo punto aplicándole un ratio, el punto se
-        # considera bueno
         if p1.distance < ratio*p2.distance:
             good.append([p1])
-    # Se ordenan los matches dependiendo de la distancia entre ambos puntos
-    # guardando solo los n mejores
-    matches = sorted(good, key = lambda x:x[0].distance)
-    # Se guardan solo algunos puntos (n) aleatorios
-    matches = random.sample(matches, n)
-    # Se crea la imagen que se compone de ambas imágenes con los matches
-    # generados.
-    return cv2.drawMatchesKnn(img1, kpts1, img2, kpts2, matches, None, flags = flag)
+    #matches = sorted(good, key = lambda x:x[0].distance)
+    matches = random.sample(good, n)
+    return cv2.drawMatchesKnn(imagen1, kpts1, imagen2, kpts2, matches, None, flags = flag)
 
 def apartado1AB():
     # Parametros
-    imagen = lee_imagen('imagenes/yosemite/Yosemite1.jpg')
+    #im = lee_imagen('imagenes/yosemite/Yosemite1.jpg')
+    im = lee_imagen('imagenes/Tablero1.jpg')
+    imagen = np.copy(im)
+
+    #imagen = imagen.astype(np.uint8)
     nivel_piramide = 4
 
     # Realización
     piramide = piramide_gaussiana(imagen, nivel = nivel_piramide)
     puntos_harris = []
     puntos = []
+
+    dx, dy = derivadas(imagen, sigma = 4.5)
+    p_dx = piramide_gaussiana(dx, nivel = nivel_piramide)
+    p_dy = piramide_gaussiana(dy, nivel = nivel_piramide)
+    imagen = imagen.astype(np.uint8)
+
     # Se recorre cada imagen y se le calculan los puntos Harris
     for i, img in enumerate(piramide):
-        puntos = get_puntos_harris(img, block_size = 5, ksize = 5, threshold = 0.01, win_size = 5, nivel_piramide = i)
+        puntos = get_puntos_harris(img, p_dx[i], p_dy[i], block_size = 5, ksize = 3, threshold = 10, win_size = 5, nivel_piramide = i)
         puntos_harris += puntos
         print("Numero de puntos harris encontrados en la octava " + str(i+1) + ": " + str(len(puntos)))
         imagen_key = cv2.drawKeypoints(imagen, puntos, np.array([]), color = (0,0,255), flags = 4)
@@ -280,49 +276,6 @@ def apartado2B():
     imagenes.append(get_matches_knn(imagen1, imagen2))
     show_images(imagenes, cols = 1)
 
-'''
-    # Realización
-    akaze = cv2.AKAZE_create()
-    kpts1, desc1 = akaze.detectAndCompute(imagen1, None)
-    kpts2, desc2 = akaze.detectAndCompute(imagen2, None)
-    matcher = cv2.DescriptorMatcher_create(cv2.DescriptorMatcher_BRUTEFORCE_HAMMING)
-    nn_matches = matcher.knnMatch(desc1, desc2, 2)
-    matched1 = []
-    matched2 = []
-    nn_match_ratio = 0.8 # Nearest neighbor matching ratio
-    for m, n in nn_matches:
-        if m.distance < nn_match_ratio * n.distance:
-            matched1.append(kpts1[m.queryIdx])
-            matched2.append(kpts2[m.trainIdx])
-    inliers1 = []
-    inliers2 = []
-    good_matches = []
-    inlier_threshold = 2.5 # Distance threshold to identify inliers with homography check
-    for i, m in enumerate(matched1):
-        col = np.ones((3,1), dtype=np.float64)
-        col[0:2,0] = m.pt
-        #col = np.dot(homography, col)
-        col /= col[2,0]
-        dist = math.sqrt(pow(col[0,0] - matched2[i].pt[0], 2) +\
-                    pow(col[1,0] - matched2[i].pt[1], 2))
-        if dist < inlier_threshold:
-            good_matches.append(cv2.DMatch(len(inliers1), len(inliers2), 0))
-            inliers1.append(matched1[i])
-            inliers2.append(matched2[i])
-    res = np.empty((max(imagen1.shape[0], imagen2.shape[0]), imagen1.shape[1]+imagen2.shape[1], 3), dtype=np.uint8)
-    imagen_matches = cv2.drawMatches(imagen1, inliers1, imagen2, inliers2, good_matches, None, flags = 0)
-    cv2.imwrite("akaze_result.png", res)
-    inlier_ratio = len(inliers1) / float(len(matched1))
-    print('A-KAZE Matching Results')
-    print('*******************************')
-    print('# Keypoints 1:                        \t', len(kpts1))
-    print('# Keypoints 2:                        \t', len(kpts2))
-    print('# Matches:                            \t', len(matched1))
-    print('# Inliers:                            \t', len(inliers1))
-    print('# Inliers Ratio:                      \t', inlier_ratio)
-    cv2.imshow('result', res)
-    pinta_imagen(imagen_matches)
-'''
 def ej1():
     print("Ejercicio 1")
     apartado1AB()
@@ -336,8 +289,8 @@ def ej2():
     apartado2B()
 
 def main():
-    #ej1()
-    ej2()
+    ej1()
+    #ej2()
 
 
 
