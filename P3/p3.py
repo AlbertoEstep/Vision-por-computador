@@ -167,7 +167,7 @@ def supresion_no_maximos(dx, dy, m, win_size, nivel_piramide, block_size, thresh
         - m: matriz de Harris de la imagen
         - win_size: dimensiones de la ventana = win_size*2+1
         - nivel_piramide: nivel de la piramide gaussiana en que nos encontramos
-        - block_size:
+        - block_size: NO TENGO NI IDEA HULIO
         - threshold: umbral que sirve como supresion de no-maximos
     '''
     # Calculamos la matriz ampliada donde pasará la ventana sin tener en cuenta las restricciones
@@ -206,7 +206,7 @@ def get_puntos_harris(imagen, dx, dy, block_size = 5, ksize = 3, threshold = 10,
         - imagen: imagen original de la que extraer los puntos de Harris.
         - dx: derivada primera de la imagen en el eje x
         - dy: derivada segunda de la imagen en el eje y
-        - block_size:
+        - block_size: NO TENGO NI IDEA HULIO
         - ksize:
         - win_size: dimensiones de la ventana = win_size*2+1
         - nivel_piramide: nivel de la piramide gaussiana en que nos encontramos
@@ -225,7 +225,7 @@ def get_puntos_harris(imagen, dx, dy, block_size = 5, ksize = 3, threshold = 10,
 
 # Calcula los matches entre dos imagenes con el criterio correspondencia de Fuerza Bruta
 # y con los descriptores AKAZE de opencv
-def get_matches_bf_cc(imagen1, imagen2, n = 100, flag = 2, pintar = True):
+def get_matches_fuerza_bruta(imagen1, imagen2, n = 100, flag = 2, pintar = True):
     '''
     Calcula los matches entre dos imagenes con el criterio correspondencia de Fuerza Bruta
     y con los descriptores AKAZE de opencv
@@ -249,15 +249,14 @@ def get_matches_bf_cc(imagen1, imagen2, n = 100, flag = 2, pintar = True):
     matches = random.sample(matches, n)
     if pintar:
         # Los pintamos si el usuario lo pide
-        cv2.drawMatches(imagen1, kpts1, imagen2, kpts2, matches, None, flags = flag)
-    else:
-        # Los devolvemos si el usuario lo pide junto con los keyPoints y los descriptores
-        return kpts1, desc1, kpts2, desc2, matches
+        return cv2.drawMatches(imagen1, kpts1, imagen2, kpts2, matches, None, flags = flag)
+    # Los devolvemos junto con los keyPoints y los descriptores
+    return kpts1, desc1, kpts2, desc2, matches
 
 
 # Calcula los matches entre dos imagenes con el criterio correspondencia de Lowe-Average-2NN
 # y con los descriptores AKAZE de opencv
-def get_matches_knn(imagen1, imagen2, k = 2, ratio = 0.8, n = 100, flag = 2, pintar = True):
+def get_matches_lowe_average_knn(imagen1, imagen2, k = 2, ratio = 0.8, n = 100, flag = 2, pintar = True):
     '''
     Calcula los matches entre dos imagenes con el criterio correspondencia de Lowe-Average-2NN
     y con los descriptores AKAZE de opencv
@@ -288,34 +287,54 @@ def get_matches_knn(imagen1, imagen2, k = 2, ratio = 0.8, n = 100, flag = 2, pin
     matches = random.sample(matches_correctos, n)
     if pintar:
         # Los pintamos si el usuario lo pide
-        cv2.drawMatchesKnn(imagen1, kpts1, imagen2, kpts2, matches, None, flags = flag)
-    else:
-        # Los devolvemos si el usuario lo pide junto con los keyPoints y los descriptores
-        return kpts1, desc1, kpts2, desc2, matches
+        return cv2.drawMatchesKnn(imagen1, kpts1, imagen2, kpts2, matches, None, flags = flag)
+
+    # Los devolvemos junto con los keyPoints y los descriptores
+    return kpts1, desc1, kpts2, desc2, matches
 
 
-
-
-
-
-
+# Calcula la homografia entre dos imagenes
 def get_homografia(imagen1, imagen2):
-    kpts1, desc1, kpts2, desc2, matches = get_matches_knn(imagen1, imagen2, pintar = False)
+    '''
+    Calcula la matriz que define la homografia entre dos imágenes
+    Parametros:
+        - imagen1: primera imagen.
+        - imagen2: segunda imagen.
+    '''
+    # Calculamos los keyPoints y los matches entre las dos imagenes mediante el método de
+    kpts1, desc1, kpts2, desc2, matches = get_matches_lowe_average_knn(imagen1, imagen2, pintar = False)
+    # Ordeno los puntos para el findHomography por queryIdx y por trainIdx
     puntos_origen = np.float32([kpts1[punto[0].queryIdx].pt for punto in matches]).reshape(-1, 1, 2)
     puntos_destino = np.float32([kpts2[punto[0].trainIdx].pt for punto in matches]).reshape(-1, 1, 2)
+    # Uso la funcion de opencv pa calcular la homografia findHomography con los parametros  cv2.RANSAC, 1
     homografia , _ = cv2.findHomography(puntos_origen, puntos_destino, cv2.RANSAC, 1)
     return homografia
 
+
+# Calcula la homografia que lleva la imagen al centro del mosaico dado por sus dimensiones
 def homografia_identidad(imagen, ancho_mosaico, alto_mosaico):
-    """
-    Calcula la homografía necesaria para llevar una imagen (imagen) al centro de
-    un mosaico de tamaño (ancho_mosaico x alto_mosaico)
-    """
+    '''
+    Calcula la matriz que define la homografia que lleva la imagen al centro del mosaico
+    dado por sus dimensiones
+    Parametros:
+        - imagen: imagen original.
+        - ancho_mosaico: ancho del mosaico.
+        - alto_mosaico: alto del mosaico.
+    '''
+    # Calculamos las traslaciones tx y ty
     tx = ancho_mosaico/2 - imagen.shape[0]/2
     ty = alto_mosaico/2 - imagen.shape[1]/2
+    # Devolvemos la matriz identidad sumada las traslaciones necesarias para llevarla al centro tx y ty
     return np.array([[1, 0, tx], [0, 1, ty], [0, 0, 1]], dtype=np.float32)
 
+################### COPIADO #########################
+# Calcula el mosaico resultante pasadas N imágenes
 def get_mosaicoN(*args):
+    '''
+    Calcula el mosaico resultante pasadas N imágenes.
+    Parametros:
+        - args: Lista de imagen de número aleatorio
+    '''
     # Se calcula cuál es el número de la imagen que se encuentra en el centro
     index_img_center = int(len(args)/2)
     # Se obtiene la imagen que está en el centro
@@ -336,21 +355,7 @@ def get_mosaicoN(*args):
         m = np.dot(homographies[i-1], m)
         homographies[i] = m
         img = cv2.warpPerspective(args[i], m, (ancho_mosaico, alto_mosaico), dst=img, borderMode=cv2.BORDER_TRANSPARENT)
-    #img = crop_image(img)
     return img
-
-
-def crop_image(img):
-    """
-    Recorta todos los bordes negros a una imagen y la devuelve.
-    Código completamente obtenido de:
-    - https://stackoverflow.com/questions/13538748/crop-black-edges-with-opencv
-    """
-    img = img.astype(np.uint8)
-    _, thresh = cv2.threshold(img, 1, 255, cv2.THRESH_BINARY)
-    contours = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0]
-    x, y, w, h = cv2.boundingRect(contours)
-    return img[y:y+h,x:x+w]
 
 def apartado1AB():
     # Parametros
@@ -386,22 +391,22 @@ def apartado1AB():
 
 def apartado2A():
     # Parametros
-    imagen1 = lee_imagen('imagenes/yosemite/Yosemite1.jpg', 0)
-    imagen2 = lee_imagen('imagenes/yosemite/Yosemite2.jpg', 0)
+    imagen1 = lee_imagen('imagenes/yosemite/Yosemite1.jpg', 1)
+    imagen2 = lee_imagen('imagenes/yosemite/Yosemite2.jpg', 1)
 
     # Realización
     imagenes = []
-    imagenes.append(get_matches_bf_cc(imagen1, imagen2))
+    imagenes.append(get_matches_fuerza_bruta(imagen1, imagen2, pintar = True))
     pinta_lista_imagenes(imagenes)
 
 def apartado2B():
     # Parametros
-    imagen1 = lee_imagen('imagenes/yosemite/Yosemite1.jpg', 0)
-    imagen2 = lee_imagen('imagenes/yosemite/Yosemite2.jpg', 0)
+    imagen1 = lee_imagen('imagenes/yosemite/Yosemite1.jpg', 1)
+    imagen2 = lee_imagen('imagenes/yosemite/Yosemite2.jpg', 1)
 
     # Realización
     imagenes = []
-    imagenes.append(get_matches_knn(imagen1, imagen2))
+    imagenes.append(get_matches_lowe_average_knn(imagen1, imagen2, pintar = True))
     pinta_lista_imagenes(imagenes)
 
 def apartado3():
@@ -456,7 +461,7 @@ def ej4():
 
 def main():
     ej1()
-    #ej2()
+    ej2()
     ej3()
     ej4()
 
