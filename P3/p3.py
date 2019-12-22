@@ -58,7 +58,7 @@ def convolucion(imagen, kx, ky, border = cv2.BORDER_DEFAULT):
     imagen = cv2.filter2D(imagen, -1, ky, borderType = border)
     return imagen
 
-# Calculo del alisado gassiano una máscara de dim 2 de la P1.
+# Calculo del alisado gassiano una máscara de dimension 2 de la P1.
 def gaussian_blur(imagen, kx = 0, ky = 0, sigmax = 0, sigmay = 0, border = cv2.BORDER_DEFAULT):
     if kx == 0:
         kx = int(6*sigmax) + 1
@@ -69,7 +69,7 @@ def gaussian_blur(imagen, kx = 0, ky = 0, sigmax = 0, sigmay = 0, border = cv2.B
     imagen = convolucion(imagen, kernelX, kernelY, border)
     return imagen
 
-# Representación en pirámide Gaussiana de 4 niveles de una imagen de la P1.
+# Representación en pirámide Gaussiana de una imagen de la P1.
 def piramide_gaussiana(imagen, nivel = 4, border = cv2.BORDER_DEFAULT):
     p = [imagen]
     for n in range(nivel-1):
@@ -223,6 +223,21 @@ def get_puntos_harris(imagen, dx, dy, block_size = 5, ksize = 3, threshold = 10,
     maximos = supresion_no_maximos(dx, dy, harris, win_size, nivel_piramide, block_size, threshold)
     return maximos
 
+
+def refine_harris_points(img, points, size, env = 5, zero_zone = -1, criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.001)):
+    new_points = list()
+    index = list()
+    for i, point in enumerate(points):
+        if point[0].size == size:
+            new_points.append(point[0].pt)
+            index.append(i)
+    new_points = np.float32(new_points)
+    cv2.cornerSubPix(img, new_points, (env, env), (zero_zone, zero_zone), criteria)
+    for i, point in enumerate(new_points):
+        points[index[i]][0].pt = (point[0], point[1])
+    return points
+
+
 # Calcula los matches entre dos imagenes con el criterio correspondencia de Fuerza Bruta
 # y con los descriptores AKAZE de opencv
 def get_matches_fuerza_bruta(imagen1, imagen2, n = 100, flag = 2, pintar = True):
@@ -256,14 +271,13 @@ def get_matches_fuerza_bruta(imagen1, imagen2, n = 100, flag = 2, pintar = True)
 
 # Calcula los matches entre dos imagenes con el criterio correspondencia de Lowe-Average-2NN
 # y con los descriptores AKAZE de opencv
-def get_matches_lowe_average_knn(imagen1, imagen2, k = 2, ratio = 0.8, n = 100, flag = 2, pintar = True):
+def get_matches_lowe_average_2nn(imagen1, imagen2, ratio = 0.8, n = 100, flag = 2, pintar = True):
     '''
     Calcula los matches entre dos imagenes con el criterio correspondencia de Lowe-Average-2NN
     y con los descriptores AKAZE de opencv
     Parametros:
         - imagen1: primera imagen.
         - imagen2: segunda imagen.
-        - k: (2 por defecto) número de matches posibles detectados por knnMatch
         - ratio: ratio minimo para decidir cual es el match correcto
         - n: numero de matches finales resultado
         - flag: Banderas que configuran las características de dibujo.
@@ -275,13 +289,13 @@ def get_matches_lowe_average_knn(imagen1, imagen2, k = 2, ratio = 0.8, n = 100, 
     kpts2, desc2 = akaze.detectAndCompute(imagen2, None)
     # Brute-force descriptor matcher.
     bf = cv2.BFMatcher()
-    # Encuentra los k=2 mejores matches para cada descriptor.
-    matches = bf.knnMatch(desc1, desc2, k)
+    # Encuentra los 2 mejores matches para cada descriptor.
+    matches = bf.knnMatch(desc1, desc2, 2)
     matches_correctos = []
-    for p1, p2 in matches:
+    for m1, m2 in matches:
         # Si la distancia de los matches es pequeña no se elige el match
-        if p1.distance < ratio*p2.distance:
-            matches_correctos.append([p1])
+        if m1.distance < ratio*m2.distance:
+            matches_correctos.append([m1])
     #matches = sorted(matches_correctos, key = lambda x:x[0].distance)
     # Nos quedamos con n aleatorios
     matches = random.sample(matches_correctos, n)
@@ -302,7 +316,7 @@ def get_homografia(imagen1, imagen2):
         - imagen2: segunda imagen.
     '''
     # Calculamos los keyPoints y los matches entre las dos imagenes mediante el método de
-    kpts1, desc1, kpts2, desc2, matches = get_matches_lowe_average_knn(imagen1, imagen2, pintar = False)
+    kpts1, desc1, kpts2, desc2, matches = get_matches_lowe_average_2nn(imagen1, imagen2, pintar = False)
     # Ordeno los puntos para el findHomography por queryIdx y por trainIdx
     puntos_origen = np.float32([kpts1[punto[0].queryIdx].pt for punto in matches]).reshape(-1, 1, 2)
     puntos_destino = np.float32([kpts2[punto[0].trainIdx].pt for punto in matches]).reshape(-1, 1, 2)
@@ -326,6 +340,17 @@ def homografia_identidad(imagen, ancho_mosaico, alto_mosaico):
     ty = alto_mosaico/2 - imagen.shape[1]/2
     # Devolvemos la matriz identidad sumada las traslaciones necesarias para llevarla al centro tx y ty
     return np.array([[1, 0, tx], [0, 1, ty], [0, 0, 1]], dtype=np.float32)
+
+
+def get_mosaico2(imagen1, imagen2):
+    ancho_mosaico = imagen1.shape[1] + imagen2.shape[1]
+    alto_mosaico = imagen1.shape[0] + imagen1.shape[0]
+    homografia_id = homografia_identidad(imagen1, ancho_mosaico, alto_mosaico)
+    imagen = cv2.warpPerspective(imagen1, homografia_id, (ancho_mosaico, alto_mosaico), borderMode=cv2.BORDER_TRANSPARENT)
+    homografia = get_homografia(imagen1, imagen2)
+    homografia = np.dot(homografia_id, homografia)
+    imagen = cv2.warpPerspective(imagen2, homografia, (ancho_mosaico, alto_mosaico), dst=imagen, borderMode=cv2.BORDER_TRANSPARENT)
+    return imagen
 
 ################### COPIADO #########################
 # Calcula el mosaico resultante pasadas N imágenes
@@ -358,36 +383,44 @@ def get_mosaicoN(*args):
     return img
 
 def apartado1AB():
-    # Parametros
-    #im = lee_imagen('imagenes/yosemite/Yosemite1.jpg', 0)
-    im = lee_imagen('imagenes/Tablero1.jpg', 0)
+    # PARAMETROS:
+    im = lee_imagen('imagenes/yosemite/Yosemite1.jpg', 0)
+    #im = lee_imagen('imagenes/Tablero1.jpg', 0)
     imagen = np.copy(im)
-
-    #imagen = imagen.astype(np.uint8)
     nivel_piramide = 4
 
-    # Realización
+    # REALIZACION:
+    # Obtención de la piramide gaussiana
     piramide = piramide_gaussiana(imagen, nivel = nivel_piramide)
     puntos_harris = []
     puntos = []
 
+    # Obtención de la piramide gaussiana de las derivadas con sigma = 4.5
     dx, dy = derivadas(imagen, sigma = 4.5)
     p_dx = piramide_gaussiana(dx, nivel = nivel_piramide)
     p_dy = piramide_gaussiana(dy, nivel = nivel_piramide)
+
+    # Ya solo trabajaremos con la imagen original para pintarla, por eso la pasamos a enteros
     imagen = imagen.astype(np.uint8)
 
-    # Se recorre cada imagen y se le calculan los puntos Harris
     for i, img in enumerate(piramide):
-        puntos = get_puntos_harris(img, p_dx[i], p_dy[i], block_size = 5, ksize = 3, threshold = 10, win_size = 5, nivel_piramide = i)
+        # Para cada nivel de la piramide se obtienen los puntos de harris
+        puntos = get_puntos_harris(img, p_dx[i], p_dy[i], block_size = 5, ksize = 5, threshold = 5, win_size = 5, nivel_piramide = i)
         puntos_harris += puntos
         print("Numero de puntos Harris encontrados en la octava " + str(i+1) + ": " + str(len(puntos)))
+        # Dibujamos en la imagen los puntos obtenidos
         imagen_key = cv2.drawKeypoints(imagen, puntos, np.array([]), color = (0,0,255), flags = 4)
+        # Mostramos el resultado
         pinta_imagen(imagen_key)
 
     print("Numero de puntos Harris encontrados en total: " + str(len(puntos_harris)))
      # Se añade la imagen a la lista de imágenes
     imagen_key = cv2.drawKeypoints(imagen, puntos_harris, np.array([]), color = (0,0,255), flags = 4)
     pinta_imagen(imagen_key)
+
+def apartado1D():
+    imagen1 = lee_imagen('imagenes/yosemite/Yosemite1.jpg', 0)
+    imagen2 = lee_imagen('imagenes/yosemite/Yosemite2.jpg', 0)
 
 def apartado2A():
     # Parametros
@@ -406,16 +439,15 @@ def apartado2B():
 
     # Realización
     imagenes = []
-    imagenes.append(get_matches_lowe_average_knn(imagen1, imagen2, pintar = True))
+    imagenes.append(get_matches_lowe_average_2nn(imagen1, imagen2, pintar = True))
     pinta_lista_imagenes(imagenes)
 
 def apartado3():
     mosaico = []
     imagen1 = lee_imagen('imagenes/yosemite/Yosemite1.jpg', 1)
     imagen2 = lee_imagen('imagenes/yosemite/Yosemite2.jpg', 1)
-    #mosaico.append(get_mosaico2(imagen1, imagen2))
-    # Se muestran las imágenes que se leen inicialmente
-    #pinta_lista_imagenes(mosaico)
+    mosaico.append(get_mosaico2(imagen1, imagen2))
+    pinta_lista_imagenes(mosaico)
 
 def apartado4():
     mosaico1 = []
@@ -429,22 +461,25 @@ def apartado4():
     imagen7 = lee_imagen('imagenes/yosemite_full/yosemite7.jpg', 1)
     mosaico1.append(get_mosaicoN(imagen1, imagen2, imagen3, imagen4))
     mosaico2.append(get_mosaicoN(imagen5, imagen6, imagen7))
-    # Se muestran las imágenes que se leen inicialmente
     pinta_lista_imagenes(mosaico1)
     pinta_lista_imagenes(mosaico2)
 
 
-
-
 def ej1():
-    print("Ejercicio 1")
+    print("Ejercicio 1\n")
+    print("\tApartados A-C:\n")
     apartado1AB()
-    input("Pulsa enter para continuar")
+    input("Pulsa enter para continuar\n")
+    print("\tApartado D:\n")
+    apartado1D()
+    input("Pulsa enter para continuar\n")
 
 def ej2():
     print("Ejercicio 2")
+    print("\tApartado A:\n")
     apartado2A()
     input("Pulsa enter para continuar")
+    print("\tApartado B:\n")
     apartado2B()
     input("Pulsa enter para continuar")
 
