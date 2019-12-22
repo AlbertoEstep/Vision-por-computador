@@ -223,6 +223,54 @@ def get_puntos_harris(imagen, dx, dy, block_size = 5, ksize = 3, threshold = 10,
     maximos = supresion_no_maximos(dx, dy, harris, win_size, nivel_piramide, block_size, threshold)
     return maximos
 
+# Ajusta los puntos Harris de la imagen
+def ajusta_puntos(imagen, puntos):
+    '''
+    Calcula 3 puntos ajustados a la posicion correcta
+    Parametros:
+        - imagen: imagen
+        - puntos: puntos Harris obtenidos anteriormente
+    '''
+    puntos_ajustados = []
+    j = 0
+    lista_zoom = []
+    # Encontramos los puntos ajustados
+    p = np.array([punto.pt for punto in puntos], dtype = np.uint32)
+    p_ajustados = p.reshape(len(puntos), 1, 2).astype(np.float32)
+    cv2.cornerSubPix(imagen, p_ajustados, (5, 5), (-1, -1), (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 40, 0.001))
+    # Buscamos tres puntos ajustados que no coincidan con los originales
+    while j < 3:
+        numero_aleatorio = random.randint(0, len(p)-1)
+        if (p[numero_aleatorio] != p_ajustados[numero_aleatorio][0]).any():
+            j += 1
+            puntos_ajustados.append(numero_aleatorio)
+
+    # Cambiamos la imagen a color
+    img = cv2.cvtColor(imagen, cv2.COLOR_GRAY2RGB).astype(np.float32)
+
+    # Para cada punto adjustado hacer...
+    for i in puntos_ajustados:
+        columna_adjustado, fila_adjustado = p_ajustados[i][0]
+        columna, fila = p[i]
+        # Definir una ventana de tamaño 10x10
+        m_ampliada = np.ndarray(shape=(img.shape[0]+2*5, img.shape[1]+2*5, 3))
+        m_ampliada[:, :] = 0
+        m_ampliada[5:img.shape[0]+5, 5:img.shape[1]+5] = img.copy()
+        fini_win = fila - 5
+        ffin_win = fila + 5
+        cini_win = columna - 5
+        cfin_win = columna + 5
+        ventana = m_ampliada[fini_win:ffin_win+1, cini_win:cfin_win+1]
+        # Hacemos zoom de x5
+        ventana = cv2.resize(ventana, None, fx = 5, fy = 5)
+        # Señalamos de color verde el punto adjustado
+        ventana = cv2.circle(ventana, (int(5*(5+columna_adjustado-columna)+1), int(5*(5+fila_adjustado-fila)+1)), 3, (0, 255, 0))
+        # Señalamos de color azul el punto adjustado
+        ventana = cv2.circle(ventana, (5*5+1, 5*5+1), 3, (0, 0, 255))
+        # Lo guardamos
+        lista_zoom.append(ventana)
+    return lista_zoom
+
 
 # Calcula los matches entre dos imagenes con el criterio correspondencia de Fuerza Bruta
 # y con los descriptores AKAZE de opencv
@@ -360,7 +408,6 @@ def get_mosaico2(imagen1, imagen2):
     imagen = cv2.warpPerspective(imagen2, homografia, (ancho_mosaico, alto_mosaico), dst=imagen, borderMode=cv2.BORDER_TRANSPARENT)
     return imagen
 
-################### COPIADO #########################
 # Calcula el mosaico resultante pasadas N imágenes
 def get_mosaicoN(*args):
     '''
@@ -446,8 +493,35 @@ def apartado1AB():
     pinta_imagen(imagen_key)
 
 def apartado1D():
-    imagen1 = lee_imagen('imagenes/yosemite/Yosemite1.jpg', 0)
-    imagen2 = lee_imagen('imagenes/yosemite/Yosemite2.jpg', 0)
+    # PARAMETROS:
+    im = lee_imagen('imagenes/yosemite/Yosemite1.jpg', 0)
+    #im = lee_imagen('imagenes/Tablero1.jpg', 0)
+    imagen = np.copy(im)
+    nivel_piramide = 4
+
+    # REALIZACION:
+    # Obtención de la piramide gaussiana
+    piramide = piramide_gaussiana(imagen, nivel = nivel_piramide)
+    puntos_harris = []
+    puntos = []
+
+    # Obtención de la piramide gaussiana de las derivadas con sigma = 4.5
+    dx, dy = derivadas(imagen, sigma = 4.5)
+    p_dx = piramide_gaussiana(dx, nivel = nivel_piramide)
+    p_dy = piramide_gaussiana(dy, nivel = nivel_piramide)
+
+    # Ya solo trabajaremos con la imagen original para pintarla, por eso la pasamos a enteros
+    imagen = imagen.astype(np.uint8)
+
+    for i, img in enumerate(piramide):
+        # Para cada nivel de la piramide se obtienen los puntos de harris
+        puntos = get_puntos_harris(img, p_dx[i], p_dy[i], block_size = 5, ksize = 5, threshold = 10, win_size = 3, nivel_piramide = i)
+        puntos_harris += puntos
+     # Se añade la imagen a la lista de imágenes
+    subpix1 = ajusta_puntos(imagen, puntos_harris)
+    for i, img in enumerate(subpix1):
+        pinta_imagen(img)
+
 
 def apartado2A():
     # Parametros
