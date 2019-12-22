@@ -167,7 +167,7 @@ def supresion_no_maximos(dx, dy, m, win_size, nivel_piramide, block_size, thresh
         - m: matriz de Harris de la imagen
         - win_size: dimensiones de la ventana = win_size*2+1
         - nivel_piramide: nivel de la piramide gaussiana en que nos encontramos
-        - block_size: NO TENGO NI IDEA HULIO
+        - block_size: tamaño del vecindario sobre el que se calcula la matriz de derivadas sobre cada píxel
         - threshold: umbral que sirve como supresion de no-maximos
     '''
     # Calculamos la matriz ampliada donde pasará la ventana sin tener en cuenta las restricciones
@@ -206,8 +206,8 @@ def get_puntos_harris(imagen, dx, dy, block_size = 5, ksize = 3, threshold = 10,
         - imagen: imagen original de la que extraer los puntos de Harris.
         - dx: derivada primera de la imagen en el eje x
         - dy: derivada segunda de la imagen en el eje y
-        - block_size: NO TENGO NI IDEA HULIO
-        - ksize:
+        - block_size: tamaño del vecindario sobre el que se calcula la matriz de derivadas sobre cada píxel
+        - ksize: tamaño de la máscara de la convolucion
         - win_size: dimensiones de la ventana = win_size*2+1
         - nivel_piramide: nivel de la piramide gaussiana en que nos encontramos
     '''
@@ -222,20 +222,6 @@ def get_puntos_harris(imagen, dx, dy, block_size = 5, ksize = 3, threshold = 10,
     # Realizamos una supresión de no-máximos de la matriz de Harris y calculamos los puntos de Harris
     maximos = supresion_no_maximos(dx, dy, harris, win_size, nivel_piramide, block_size, threshold)
     return maximos
-
-
-def refine_harris_points(img, points, size, env = 5, zero_zone = -1, criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.001)):
-    new_points = list()
-    index = list()
-    for i, point in enumerate(points):
-        if point[0].size == size:
-            new_points.append(point[0].pt)
-            index.append(i)
-    new_points = np.float32(new_points)
-    cv2.cornerSubPix(img, new_points, (env, env), (zero_zone, zero_zone), criteria)
-    for i, point in enumerate(new_points):
-        points[index[i]][0].pt = (point[0], point[1])
-    return points
 
 
 # Calcula los matches entre dos imagenes con el criterio correspondencia de Fuerza Bruta
@@ -259,7 +245,6 @@ def get_matches_fuerza_bruta(imagen1, imagen2, n = 100, flag = 2, pintar = True)
     bf = cv2.BFMatcher(crossCheck = True)
     # Calculamos los matches entre la imagen 1 y la imagen 2
     matches = bf.match(desc1, desc2)
-    #matches = sorted(matches, key = lambda x:x.distance)[0:n]
     # Nos quedamos con n aleatorios
     matches = random.sample(matches, n)
     if pintar:
@@ -294,9 +279,8 @@ def get_matches_lowe_average_2nn(imagen1, imagen2, ratio = 0.8, n = 100, flag = 
     matches_correctos = []
     for m1, m2 in matches:
         # Si la distancia de los matches es pequeña no se elige el match
-        if m1.distance < ratio*m2.distance:
+        if m1.distance < m2.distance * ratio:
             matches_correctos.append([m1])
-    #matches = sorted(matches_correctos, key = lambda x:x[0].distance)
     # Nos quedamos con n aleatorios
     matches = random.sample(matches_correctos, n)
     if pintar:
@@ -315,7 +299,7 @@ def get_homografia(imagen1, imagen2):
         - imagen1: primera imagen.
         - imagen2: segunda imagen.
     '''
-    # Calculamos los keyPoints y los matches entre las dos imagenes mediante el método de
+    # Calculamos los keyPoints y los matches entre las dos imagenes mediante el método de lowe_average_2nn
     kpts1, desc1, kpts2, desc2, matches = get_matches_lowe_average_2nn(imagen1, imagen2, pintar = False)
     # Ordeno los puntos para el findHomography por queryIdx y por trainIdx
     puntos_origen = np.float32([kpts1[punto[0].queryIdx].pt for punto in matches]).reshape(-1, 1, 2)
@@ -324,6 +308,18 @@ def get_homografia(imagen1, imagen2):
     homografia , _ = cv2.findHomography(puntos_origen, puntos_destino, cv2.RANSAC, 1)
     return homografia
 
+# Calcula la homografia que lleva la imagen a la izquierda de un mosaico dado por sus dimensiones
+def homografia_identidad_izq(imagen, ancho_mosaico, alto_mosaico):
+    '''
+    Calcula la matriz que define la homografia que lleva la imagen a la izquierda del mosaico
+    dado por sus dimensiones
+    Parametros:
+        - imagen: imagen original.
+        - ancho_mosaico: ancho del mosaico.
+        - alto_mosaico: alto del mosaico.
+    '''
+    # Devolvemos la matriz identidad para llevarla a la izquierda del mosaico
+    return np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float32)
 
 # Calcula la homografia que lleva la imagen al centro del mosaico dado por sus dimensiones
 def homografia_identidad(imagen, ancho_mosaico, alto_mosaico):
@@ -342,13 +338,25 @@ def homografia_identidad(imagen, ancho_mosaico, alto_mosaico):
     return np.array([[1, 0, tx], [0, 1, ty], [0, 0, 1]], dtype=np.float32)
 
 
+# Calcula el mosaico resultante pasadas 2 imágenes
 def get_mosaico2(imagen1, imagen2):
+    '''
+    Calcula el mosaico resultante pasadas N imágenes.
+    Parametros:
+        - args: Lista de imagen de número aleatorio
+    '''
+    # Definimos las dimensiones del mosaico
+    alto_mosaico = imagen1.shape[0]
     ancho_mosaico = imagen1.shape[1] + imagen2.shape[1]
-    alto_mosaico = imagen1.shape[0] + imagen1.shape[0]
-    homografia_id = homografia_identidad(imagen1, ancho_mosaico, alto_mosaico)
+    # Homografia que lleva la imagen a la izquierda mosaico
+    homografia_id = homografia_identidad_izq(imagen1, ancho_mosaico, alto_mosaico)
+    # Aplicamos la homografia a la imagen con el parametro BORDER_TRANSPARENT
     imagen = cv2.warpPerspective(imagen1, homografia_id, (ancho_mosaico, alto_mosaico), borderMode=cv2.BORDER_TRANSPARENT)
-    homografia = get_homografia(imagen1, imagen2)
+    # Conseguimos la homografia que lleva la imagen1 a la 2
+    homografia = get_homografia(imagen2, imagen1)
+    # Componemos con la homografía identidad para llevarla al mosaico
     homografia = np.dot(homografia_id, homografia)
+    # Aplicamos la homografia a la imagen con el parametro BORDER_TRANSPARENT
     imagen = cv2.warpPerspective(imagen2, homografia, (ancho_mosaico, alto_mosaico), dst=imagen, borderMode=cv2.BORDER_TRANSPARENT)
     return imagen
 
@@ -360,27 +368,46 @@ def get_mosaicoN(*args):
     Parametros:
         - args: Lista de imagen de número aleatorio
     '''
-    # Se calcula cuál es el número de la imagen que se encuentra en el centro
-    index_img_center = int(len(args)/2)
-    # Se obtiene la imagen que está en el centro
-    img_center =  args[index_img_center]
-    ancho_mosaico = sum([img.shape[1] for img in args])
-    alto_mosaico = args[0].shape[0]*2
-    homografia_id = homografia_identidad(img_center, ancho_mosaico, alto_mosaico)
-    img = cv2.warpPerspective(img_center, homografia_id, (ancho_mosaico, alto_mosaico), borderMode=cv2.BORDER_TRANSPARENT)
-    homographies = [None] * len(args)
-    homographies[index_img_center] = homografia_id
-    for i in range(0, index_img_center)[::-1]:
-        m = get_homografia(args[i], args[i+1])
-        m = np.dot(homographies[i+1], m)
-        homographies[i] = m
-        img = cv2.warpPerspective(args[i], m, (ancho_mosaico, alto_mosaico), dst=img, borderMode=cv2.BORDER_TRANSPARENT)
-    for i in range(index_img_center+1, len(args)):
-        m = get_homografia(args[i], args[i-1])
-        m = np.dot(homographies[i-1], m)
-        homographies[i] = m
-        img = cv2.warpPerspective(args[i], m, (ancho_mosaico, alto_mosaico), dst=img, borderMode=cv2.BORDER_TRANSPARENT)
-    return img
+    # Se obtiene la imagen central que estará en el centro del mosaico
+    imagen_central =  args[int(len(args)/2)]
+    # Se calculan las dimensiones del mosaico
+    alto_mosaico = args[0].shape[0]+args[0].shape[0]
+    #ancho_mosaico = sum([imagen.shape[1] for imagen in args])
+    ancho_mosaico = args[0].shape[1]*3
+    # Se calcula la homografia que lleva la imagen central al centro del mosaico
+    homografia_id = homografia_identidad(imagen_central, ancho_mosaico, alto_mosaico)
+    # Aplicamos la homografia a la imagen con el parametro BORDER_TRANSPARENT
+    imagen = cv2.warpPerspective(imagen_central, homografia_id, (ancho_mosaico, alto_mosaico), borderMode=cv2.BORDER_TRANSPARENT)
+    # Rellenamos la lista donde guardaremos las homografías obtenidas.
+    lista_homografias = []
+    for i in range(len(args)):
+        lista_homografias.append(None)
+    # Incluimos la homografia de la imagen central al centro del mosaico
+    lista_homografias[int(len(args)/2)] = homografia_id
+
+    # Para cada imagen de la derecha hacer...
+    for i in range(int(len(args)/2)+1, len(args)):
+        # Obtener la homografia entre la imagen y la anterior
+        homografia_aux = get_homografia(args[i], args[i-1])
+        # Componemos con la homografía anterior para llevarla al mosaico
+        homografia_aux = np.dot(lista_homografias[i-1], homografia_aux)
+        # Aplicamos la homografia a la imagen con el parametro BORDER_TRANSPARENT
+        imagen = cv2.warpPerspective(args[i], homografia_aux, (ancho_mosaico, alto_mosaico), dst=imagen, borderMode=cv2.BORDER_TRANSPARENT)
+        # Incluimos la homografía obtenida en la lista de homografías
+        lista_homografias[i] = homografia_aux
+
+    # Para cada imagen de la izq hacer...
+    for i in range(0, int(len(args)/2))[::-1]:
+        # Obtener la homografia entre la imagen y la siguiente
+        homografia_aux = get_homografia(args[i], args[i+1])
+        # Componemos con la homografía siguiente para llevarla al mosaico
+        homografia_aux = np.dot(lista_homografias[i+1], homografia_aux)
+        # Aplicamos la homografia a la imagen con el parametro BORDER_TRANSPARENT
+        imagen = cv2.warpPerspective(args[i], homografia_aux, (ancho_mosaico, alto_mosaico), dst=imagen, borderMode=cv2.BORDER_TRANSPARENT)
+        # Incluimos la homografía obtenida en la lista de homografías
+        lista_homografias[i] = homografia_aux
+
+    return imagen
 
 def apartado1AB():
     # PARAMETROS:
@@ -405,7 +432,7 @@ def apartado1AB():
 
     for i, img in enumerate(piramide):
         # Para cada nivel de la piramide se obtienen los puntos de harris
-        puntos = get_puntos_harris(img, p_dx[i], p_dy[i], block_size = 5, ksize = 5, threshold = 5, win_size = 5, nivel_piramide = i)
+        puntos = get_puntos_harris(img, p_dx[i], p_dy[i], block_size = 5, ksize = 5, threshold = 10, win_size = 3, nivel_piramide = i)
         puntos_harris += puntos
         print("Numero de puntos Harris encontrados en la octava " + str(i+1) + ": " + str(len(puntos)))
         # Dibujamos en la imagen los puntos obtenidos
@@ -452,6 +479,7 @@ def apartado3():
 def apartado4():
     mosaico1 = []
     mosaico2 = []
+    mosaico3 = []
     imagen1 = lee_imagen('imagenes/yosemite_full/yosemite1.jpg', 1)
     imagen2 = lee_imagen('imagenes/yosemite_full/yosemite2.jpg', 1)
     imagen3 = lee_imagen('imagenes/yosemite_full/yosemite3.jpg', 1)
@@ -463,6 +491,20 @@ def apartado4():
     mosaico2.append(get_mosaicoN(imagen5, imagen6, imagen7))
     pinta_lista_imagenes(mosaico1)
     pinta_lista_imagenes(mosaico2)
+
+    etsiit1 = lee_imagen('imagenes/mosaico-1/mosaico002.jpg', 1)
+    etsiit2 = lee_imagen('imagenes/mosaico-1/mosaico003.jpg', 1)
+    etsiit3 = lee_imagen('imagenes/mosaico-1/mosaico004.jpg', 1)
+    etsiit4 = lee_imagen('imagenes/mosaico-1/mosaico005.jpg', 1)
+    etsiit5 = lee_imagen('imagenes/mosaico-1/mosaico006.jpg', 1)
+    etsiit6 = lee_imagen('imagenes/mosaico-1/mosaico007.jpg', 1)
+    etsiit7 = lee_imagen('imagenes/mosaico-1/mosaico008.jpg', 1)
+    etsiit8 = lee_imagen('imagenes/mosaico-1/mosaico009.jpg', 1)
+    etsiit9 = lee_imagen('imagenes/mosaico-1/mosaico010.jpg', 1)
+    etsiit10 = lee_imagen('imagenes/mosaico-1/mosaico011.jpg', 1)
+    mosaico3.append(get_mosaicoN(etsiit1, etsiit2, etsiit3, etsiit4, etsiit5, etsiit6, etsiit7, etsiit8, etsiit9, etsiit10))
+    pinta_lista_imagenes(mosaico3)
+
 
 
 def ej1():
